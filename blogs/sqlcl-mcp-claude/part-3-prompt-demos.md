@@ -11,7 +11,7 @@ from Part 1.
 - Part 1: Setup — VS Code extension, Docker HR schema
 - Part 2: MCP Server Configuration + Claude Skills
 - Part 3: Prompt Demos — Querying Oracle in Plain English ← you are here
-- Part 4: Microsoft Agent Framework — C# Agent with SQLcl MCP
+- Part 4: C# Console Agent with Microsoft.Extensions.AI
 
 ← [Part 2: MCP Server + Claude Skills](#)
 

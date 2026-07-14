@@ -9,6 +9,7 @@ Claude AI skills for working with Oracle databases via the SQLcl MCP server. Inc
 
 - Docker Desktop (Windows) with Linux containers enabled
 - Docker Compose v2
+- .NET 10 SDK (for the C# agent in `src/OracleSqlclAgent/`)
 
 ## Quick Start
 
@@ -182,11 +183,62 @@ The `scripts/oracle/` folder contains PowerShell scripts for CI/CD and dev autom
 | `scripts/oracle/tests/` | Pester unit tests |
 | `scripts/oracle/config/` | Environment configuration templates |
 
+## C# Console Agent
+
+`src/OracleSqlclAgent/` is a standalone .NET 10 console app that connects to
+the SQLcl MCP server and answers Oracle questions in plain English — no Claude
+Code required.
+
+### Quick Start
+
+```bash
+cd src/OracleSqlclAgent
+
+# Set machine-specific values in user secrets (not committed to git)
+dotnet user-secrets set "SqlclMcp:Path" "C:\Users\<you>\.vscode\extensions\oracle.sql-developer-<version>-win32-x64\dbtools\sqlcl\bin\sql.exe"
+dotnet user-secrets set "AI:Provider" "Anthropic"
+dotnet user-secrets set "AI:Anthropic:ApiKey" "<your-api-key>"
+
+dotnet run
+```
+
+### Switching to Local Ollama
+
+```bash
+dotnet user-secrets set "AI:Provider" "Ollama"
+dotnet user-secrets set "AI:Ollama:Model" "gemma4:latest"
+dotnet user-secrets set "AI:Ollama:NumCtx" "32768"
+dotnet run
+```
+
+### Key Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `Anthropic` | Claude AI backend |
+| `OllamaSharp` | Local Ollama backend |
+| `Microsoft.Extensions.AI` | `IChatClient` abstraction (works with both) |
+| `ModelContextProtocol` | Connects to SQLcl MCP server via stdio |
+| `Spectre.Console` | Terminal UI — spinner, styled prompts, three UI styles |
+| `Markdig` | Parses markdown responses and renders as terminal widgets |
+| `Serilog` | Error-only file logging to `logs/error-*.log` |
+
+### Features
+
+- **Dual AI provider** — Anthropic Claude or local Ollama, switchable via config
+- **Three UI styles** — Structured (default), Minimal, Panels
+- **Markdown rendering** — Model responses with tables, bold, and code blocks render natively in the terminal
+- **5 Oracle skills** — sql-query, table-schema, table-constraints, table-relationships, database-info
+- **Error logging** — Errors go to `logs/error-*.log`; nothing interrupts the TUI
+
+---
+
 ## Project Structure
 
 - `docker-compose.yml`: Oracle XE container configuration.
 - `init-scripts/`: SQL scripts used for HR bootstrap.
 - `start-scripts/`: Startup scripts executed on every container start to ensure HR schema exists.
+- `src/OracleSqlclAgent/`: Standalone .NET 10 C# agent using SQLcl MCP + Microsoft.Extensions.AI.
 - `scripts/oracle/`: PowerShell automation scripts for migrations, schema validation, and CI/CD.
 - `.claude/skills/`: Claude AI skills for querying Oracle via MCP tools.
 - `docs/schema-overview.md`: HR schema entities and relationships.

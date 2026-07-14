@@ -1,34 +1,35 @@
-# Talk to Oracle with an AI Agent — Part 4: Microsoft Agent Framework
+# Talk to Oracle with an AI Agent — Part 4: C# Console Agent with Microsoft.Extensions.AI
 
 Parts 1–3 showed how Claude Code talks to Oracle through the SQLcl MCP server
-using built-in skills. This part builds a standalone C# application that does
-the same thing using **Microsoft Agent Framework (MAF)** — Microsoft's unified
-AI agent SDK that reached 1.0 GA in April 2026.
+using built-in skills. This part builds a standalone C# console application
+that does the same thing — no Claude Code required.
 
-The result: a .NET console app where you type a plain-English question and an
-AI agent queries your local Oracle HR database and answers you.
+You type a plain-English question. The agent queries your local Oracle HR
+database through the SQLcl MCP server and answers you — with results rendered
+as formatted tables right in the terminal.
 
 **Series:**
 - Part 1: Setup — VS Code extension, Docker HR schema
 - Part 2: MCP Server Configuration + Claude Skills
 - Part 3: Prompt Demos — Querying Oracle in Plain English
-- Part 4: Microsoft Agent Framework ← you are here
+- Part 4: C# Console Agent ← you are here
 
 ← [Part 3: Prompt Demos](#)
 
 ---
 
-## What is Microsoft Agent Framework?
+## What We're Building
 
-MAF is the unified successor to both **AutoGen** and **Semantic Kernel**
-(both are now in maintenance mode). It gives you a clean programming model
-for building AI agents in C# and Python — chat clients, tools, MCP
-integrations, context providers, and multi-agent workflows — without writing
-the orchestration plumbing yourself.
+A .NET 10 console app (`OracleSqlclAgent`) that:
 
-MAF connects to MCP servers natively. That means it can talk directly to
-`sqlcl -mcp` the same way Claude Code does — no subprocess wiring, no manual
-tool definitions, no agentic loop to maintain.
+1. Starts the SQLcl binary as an MCP subprocess
+2. Discovers the database tools it exposes
+3. Accepts natural language questions in a Spectre.Console TUI
+4. Runs an agentic loop — calling tools, feeding results back, looping until done
+5. Renders the response (tables, bold text, code blocks) using Markdig + Spectre.Console
+
+The agent supports two AI backends via configuration: **Anthropic Claude** or
+**local Ollama** — switchable without code changes.
 
 ---
 
@@ -36,136 +37,176 @@ tool definitions, no agentic loop to maintain.
 
 - Docker Desktop with the Oracle HR container running (from Part 1)
 - `hr_local` saved connection in SQLcl (from Part 1)
-- .NET 9 SDK
-- An Anthropic API key
+- .NET 10 SDK
+- An Anthropic API key **or** a local Ollama installation
 
 ---
 
 ## Create the Project
 
 ```bash
-mkdir OracleAgent
-cd OracleAgent
-dotnet new console
+mkdir OracleSqlclAgent
+cd OracleSqlclAgent
+dotnet new console --framework net10.0
 ```
 
 Install the packages:
 
 ```bash
-dotnet add package Microsoft.AgentFramework
-dotnet add package Microsoft.AgentFramework.Skills
-dotnet add package ModelContextProtocol
 dotnet add package Anthropic
+dotnet add package ModelContextProtocol
+dotnet add package Microsoft.Extensions.AI
+dotnet add package OllamaSharp
+dotnet add package Spectre.Console
+dotnet add package Markdig
+dotnet add package Microsoft.Extensions.Configuration.Json
+dotnet add package Microsoft.Extensions.Configuration.UserSecrets
+dotnet add package Microsoft.Extensions.Configuration.EnvironmentVariables
+dotnet add package Serilog
+dotnet add package Serilog.Sinks.File
+```
+
+> **Note:** There is no `Microsoft.AgentFramework` NuGet package. The agent
+> abstraction in this project is built directly on `Microsoft.Extensions.AI`,
+> which provides the `IChatClient` interface that both the Anthropic SDK and
+> OllamaSharp implement.
+
+---
+
+## Configuration
+
+Create `appsettings.json`:
+
+```json
+{
+  "AI": {
+    "Provider": "Anthropic",
+    "Anthropic": {
+      "Model": "claude-opus-4-6"
+    },
+    "Ollama": {
+      "Endpoint": "http://localhost:11434",
+      "Model": "llama3.2"
+    }
+  },
+  "SqlclMcp": {
+    "Path": "C:\\Users\\<you>\\.vscode\\extensions\\oracle.sql-developer-<version>-win32-x64\\dbtools\\sqlcl\\bin\\sql.exe"
+  }
+}
+```
+
+Use .NET user secrets for machine-specific values so credentials and paths
+stay out of source control:
+
+```bash
+dotnet user-secrets init
+dotnet user-secrets set "SqlclMcp:Path" "C:\Users\<you>\.vscode\extensions\oracle.sql-developer-26.2.0-win32-x64\dbtools\sqlcl\bin\sql.exe"
+dotnet user-secrets set "AI:Provider" "Anthropic"
+dotnet user-secrets set "AI:Anthropic:ApiKey" "<your-api-key>"
+```
+
+To use local Ollama instead:
+
+```bash
+dotnet user-secrets set "AI:Provider" "Ollama"
+dotnet user-secrets set "AI:Ollama:Model" "gemma4:latest"
+dotnet user-secrets set "AI:Ollama:NumCtx" "32768"
 ```
 
 ---
 
-## Connect MAF to the SQLcl MCP Server
+## Connect to the SQLcl MCP Server
 
-MAF uses the `ModelContextProtocol` NuGet package to connect to any MCP
-server over stdio. The SQLcl binary exposes all its database tools
-(`connect`, `sql_run`, `schema_information`, `disconnect`, etc.) over
-that channel automatically when you pass `-mcp`.
+`ModelContextProtocol` starts the SQLcl binary as a subprocess and exposes its
+tools over stdio:
 
 ```csharp
-using Microsoft.AgentFramework;
-using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
+
+var sqlclPath = configuration["SqlclMcp:Path"]
+    ?? throw new InvalidOperationException("Missing SqlclMcp:Path");
+
+var transport = new StdioClientTransport(new StdioClientTransportOptions
+{
+    Command = sqlclPath,
+    Arguments = ["-mcp"],
+    Name = "sqlcl"
+});
+
+await using var mcpClient = await McpClient.CreateAsync(transport);
+
+// Enumerate the tools SQLcl exposes
+var mcpTools = (await mcpClient.ListToolsAsync()).Cast<AITool>().ToList();
+```
+
+When this runs, `mcpTools` contains the same tools Claude Code uses:
+
+```
+connections_list, connect, disconnect, sql_run, sqlcl_run,
+schema_information, request_status
+```
+
+---
+
+## Build the IChatClient
+
+`Microsoft.Extensions.AI` defines `IChatClient` as a common interface for any
+AI backend. Both `Anthropic` and `OllamaSharp` implement it:
+
+```csharp
 using Anthropic;
+using Microsoft.Extensions.AI;
+using OllamaSharp;
 
-// Path to SQLcl bundled with the VS Code Oracle SQL Developer extension
-var sqlclPath = @"C:\Users\<you>\.vscode\extensions\oracle.sql-developer-<version>-win32-x64\dbtools\sqlcl\bin\sql.exe";
-
-// Start the SQLcl MCP server as a subprocess over stdio
-await using var mcpClient = await McpClientFactory.CreateAsync(
-    new StdioClientTransport(new StdioClientTransportOptions
+static IChatClient BuildChatClient(IConfiguration config, string provider)
+{
+    if (string.Equals(provider, "Ollama", StringComparison.OrdinalIgnoreCase))
     {
-        Name = "sqlcl",
-        Command = sqlclPath,
-        Arguments = ["-mcp"],
-    }));
+        var endpoint = config["AI:Ollama:Endpoint"] ?? "http://localhost:11434";
+        var model    = config["AI:Ollama:Model"]    ?? "llama3.2";
+        var http     = new HttpClient { BaseAddress = new Uri(endpoint), Timeout = Timeout.InfiniteTimeSpan };
+        return (IChatClient)new OllamaApiClient(http, model, null!);
+    }
 
-// Enumerate MCP tools — MAF converts them to AITool objects automatically
-var mcpTools = new List<McpClientTool>();
-await foreach (var tool in mcpClient.EnumerateToolsAsync())
-    mcpTools.Add(tool);
-
-Console.WriteLine($"SQLcl MCP tools loaded: {string.Join(", ", mcpTools.Select(t => t.Name))}");
+    // Anthropic — uses ANTHROPIC_API_KEY env var if no key in config
+    var apiKey = config["AI:Anthropic:ApiKey"];
+    var claude = string.IsNullOrEmpty(apiKey)
+        ? new AnthropicClient()
+        : new AnthropicClient() { ApiKey = apiKey };
+    var claudeModel = config["AI:Anthropic:Model"] ?? "claude-opus-4-6";
+    return claude.AsIChatClient(claudeModel);
+}
 ```
 
-When this runs you'll see:
-
-```
-SQLcl MCP tools loaded: connections_list, connect, disconnect, sql_run, sqlcl_run, schema_information, request_status
-```
-
-These are the same tools Claude Code uses — MAF just discovered them from
-the running MCP server.
+The rest of the agent code never references Anthropic or Ollama directly —
+it only calls `IChatClient`.
 
 ---
 
-## Build the Agent
+## Define Oracle Skills as Classes
 
-MAF's `ChatAgent` wraps a chat model and a list of tools. It runs the
-agentic loop internally — calling tools, feeding results back, and looping
-until the model stops requesting tools.
+Skills are local abstract base classes — modular prompt packages that give the
+agent focused expertise for specific task types:
 
 ```csharp
-// Anthropic client via Microsoft.Extensions.AI abstraction
-IChatClient chatClient = new AnthropicClient()
-    .AsIChatClient("claude-opus-4-6");
-
-// Create the agent with the SQLcl MCP tools
-var agent = chatClient.CreateAIAgent(
-    instructions: """
-        You are an Oracle database assistant.
-        The database connection name is hr_local.
-        Always connect before running any query.
-        Format query results clearly for the user.
-        """,
-    tools: mcpTools.Cast<AITool>().ToArray()
-);
-
-// Run a query
-Console.Write("Ask a question: ");
-var question = Console.ReadLine()!;
-
-var response = await agent.InvokeAsync(question);
-Console.WriteLine(response.Text);
+// Base class — defined locally (no NuGet package required)
+public abstract class AgentClassSkill
+{
+    public abstract string Name { get; }
+    public abstract string Description { get; }
+    protected abstract string Instructions { get; }
+    public string GetInstructions() => Instructions;
+}
 ```
 
-That's the full agent. MAF handles:
-- Calling `connect` with `hr_local` when it needs to connect
-- Running `sql_run` with the appropriate SQL
-- Looping until the model returns a final answer
-
----
-
-## Add Oracle Skills
-
-MAF has a native **Agent Skills** system — modular prompt packages that give
-the agent focused expertise for specific task types. Skills follow a
-three-phase pattern:
-
-1. **Advertise** — skill names and descriptions (~100 tokens) are injected
-   into the system prompt so the agent knows what's available
-2. **Load** — when a task matches, the agent loads the full skill instructions
-3. **Read resources** — supplementary files are fetched only when needed
-
-This mirrors how the `.claude/skills/` folder works in Claude Code, but
-MAF skills are first-class SDK objects.
-
-### Define Oracle Skills as Classes
+Each Oracle skill is a sealed class:
 
 ```csharp
-using Microsoft.AgentFramework.Skills;
-
-public class OracleSqlQuerySkill : AgentClassSkill
+public sealed class OracleSqlQuerySkill : AgentClassSkill
 {
     public override string Name => "oracle-sql-query";
     public override string Description =>
-        "Run any SQL query against Oracle — SELECT, schema exploration, data analysis";
+        "To run general SQL queries against the Oracle HR database";
 
     protected override string Instructions => """
         ## Oracle SQL Query
@@ -173,151 +214,261 @@ public class OracleSqlQuerySkill : AgentClassSkill
         Use this skill when the user asks to query Oracle data.
 
         Steps:
-        1. Call `connect` with connection_name = "hr_local"
+        1. Call connect with connection_name = "hr_local"
         2. Build the appropriate SQL based on the user's request
-        3. Call `sql_run` with the SQL
-        4. Format the results clearly — use plain text, not markdown tables
-        5. Call `disconnect` when done
+        3. Call sql_run with the SQL
+        4. Format results as a markdown table
+        5. Call disconnect when done
         """;
 }
 
-public class OracleTableSchemaSkill : AgentClassSkill
+public sealed class OracleTableSchemaSkill : AgentClassSkill
 {
     public override string Name => "oracle-table-schema";
     public override string Description =>
-        "Describe Oracle table structure — columns, data types, nullability";
+        "To describe Oracle table structure — columns, data types, nullability";
 
     protected override string Instructions => """
         ## Oracle Table Schema
 
-        Use this skill when the user asks about a table's structure or columns.
+        Use when the user asks about a table's structure or columns.
 
         Steps:
-        1. Call `connect` with connection_name = "hr_local"
+        1. Call connect with connection_name = "hr_local"
         2. Run: SELECT column_name, data_type, nullable, data_length
                  FROM user_tab_columns
                  WHERE table_name = UPPER('<table>')
                  ORDER BY column_id
-        3. Present columns with type and nullability
-        4. Call `disconnect` when done
-        """;
-}
-
-public class OracleTableRelationshipsSkill : AgentClassSkill
-{
-    public override string Name => "oracle-table-relationships";
-    public override string Description =>
-        "Map foreign key relationships across the Oracle schema";
-
-    protected override string Instructions => """
-        ## Oracle Table Relationships
-
-        Use this skill when the user asks about table relationships or schema structure.
-
-        Steps:
-        1. Call `connect` with connection_name = "hr_local"
-        2. Run: SELECT uc.constraint_name, uc.table_name, ucc.column_name,
-                        uc.r_constraint_name,
-                        (SELECT table_name FROM user_constraints
-                         WHERE constraint_name = uc.r_constraint_name) AS ref_table
-                 FROM user_constraints uc
-                 JOIN user_cons_columns ucc ON uc.constraint_name = ucc.constraint_name
-                 WHERE uc.constraint_type = 'R'
-                 ORDER BY uc.table_name
-        3. Draw a relationship hierarchy showing parent → child tables
-        4. Call `disconnect` when done
+        3. Present columns with type and nullability as a markdown table
+        4. Call disconnect when done
         """;
 }
 ```
 
-### Register Skills with the Agent
+Register all five skills with a provider:
 
 ```csharp
-using Microsoft.AgentFramework.Skills;
+public sealed class AgentSkillsProvider
+{
+    private readonly List<AgentClassSkill> _skills = new();
 
-// Register skills with the provider
-var skillProvider = new AgentSkillsProvider();
-skillProvider.Register(new OracleSqlQuerySkill());
-skillProvider.Register(new OracleTableSchemaSkill());
-skillProvider.Register(new OracleTableRelationshipsSkill());
+    public void Register(AgentClassSkill skill) => _skills.Add(skill);
 
-// Build the agent with MCP tools + skill provider
-var agent = chatClient.CreateAIAgent(
-    instructions: """
-        You are an Oracle database assistant.
-        The database connection name is hr_local.
-        Use the available skills when they match the user's request.
-        Always connect before running any query.
-        Format results in plain text — do not use markdown tables.
-        """,
-    tools: mcpTools.Cast<AITool>().ToArray(),
-    contextProviders: [skillProvider]
-);
+    public string BuildSkillsContext() =>
+        string.Join("\n", _skills.Select(s => $"- {s.Name}: {s.Description}"));
+}
+
+var skills = new AgentSkillsProvider();
+skills.Register(new OracleSqlQuerySkill());
+skills.Register(new OracleTableSchemaSkill());
+skills.Register(new OracleTableConstraintsSkill());
+skills.Register(new OracleTableRelationshipsSkill());
+skills.Register(new OracleDatabaseInfoSkill());
 ```
-
-When the user asks a question that matches a skill, MAF automatically loads
-the skill's full instructions into context before the agent responds.
 
 ---
 
-## Full Program
+## The Agentic Loop
+
+The agent loop is manual — call the model, check for tool requests, execute
+them, feed results back, repeat until the model returns a final answer:
 
 ```csharp
-using Microsoft.AgentFramework;
-using Microsoft.AgentFramework.Skills;
-using Microsoft.Extensions.AI;
-using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol.Transport;
-using Anthropic;
-
-var sqlclPath = @"C:\Users\<you>\.vscode\extensions\oracle.sql-developer-<version>-win32-x64\dbtools\sqlcl\bin\sql.exe";
-
-// Start SQLcl MCP server
-await using var mcpClient = await McpClientFactory.CreateAsync(
-    new StdioClientTransport(new StdioClientTransportOptions
-    {
-        Name = "sqlcl",
-        Command = sqlclPath,
-        Arguments = ["-mcp"],
-    }));
-
-var mcpTools = new List<McpClientTool>();
-await foreach (var tool in mcpClient.EnumerateToolsAsync())
-    mcpTools.Add(tool);
-
-// Register skills
-var skillProvider = new AgentSkillsProvider();
-skillProvider.Register(new OracleSqlQuerySkill());
-skillProvider.Register(new OracleTableSchemaSkill());
-skillProvider.Register(new OracleTableRelationshipsSkill());
-
-// Build agent
-IChatClient chatClient = new AnthropicClient()
-    .AsIChatClient("claude-opus-4-6");
-
-var agent = chatClient.CreateAIAgent(
-    instructions: """
-        You are an Oracle database assistant.
-        The database connection name is hr_local.
-        Use the available skills when they match the user's request.
-        Always connect before running any query.
-        Format results in plain text — do not use markdown tables.
-        """,
-    tools: mcpTools.Cast<AITool>().ToArray(),
-    contextProviders: [skillProvider]
-);
-
-// Conversation loop
-Console.WriteLine("Oracle Agent ready. Type a question or 'exit' to quit.\n");
-while (true)
+private async Task<string> RunToolLoopAsync(CancellationToken ct)
 {
-    Console.Write("> ");
-    var input = Console.ReadLine()!;
-    if (input.Equals("exit", StringComparison.OrdinalIgnoreCase)) break;
+    var options = new ChatOptions { Tools = tools };
 
-    var response = await agent.InvokeAsync(input);
-    Console.WriteLine($"\n{response.Text}\n");
+    var response = await chatClient.GetResponseAsync(_history, options, ct);
+
+    while (true)
+    {
+        var toolCalls = response.Messages
+            .SelectMany(m => m.Contents.OfType<FunctionCallContent>())
+            .ToList();
+
+        // No more tool calls — the model is done
+        if (toolCalls.Count == 0)
+        {
+            _history.AddMessages(response);
+            return response.Text ?? string.Empty;
+        }
+
+        // Append assistant's tool-call messages to history
+        foreach (var msg in response.Messages)
+            _history.Add(msg);
+
+        // Execute each tool and append the result
+        foreach (var call in toolCalls)
+        {
+            var fn = tools.FirstOrDefault(t => t.Name == call.Name) as AIFunction;
+            object? rawResult = fn is null
+                ? $"Tool '{call.Name}' not found."
+                : await fn.InvokeAsync(new AIFunctionArguments(call.Arguments), ct);
+
+            _history.Add(new ChatMessage(ChatRole.Tool,
+                [new FunctionResultContent(call.CallId ?? string.Empty, rawResult)]));
+        }
+
+        // Ask the model again with tool results in history
+        response = await chatClient.GetResponseAsync(_history, options, ct);
+    }
 }
+```
+
+The MCP tools (`connect`, `sql_run`, `disconnect`, etc.) are the same `AITool`
+objects as before — the loop treats them identically to any other tool.
+
+For Ollama, pass `num_ctx` via `AdditionalProperties` so the context window
+is respected:
+
+```csharp
+var additional = new AdditionalPropertiesDictionary();
+if (numCtx.HasValue) additional["num_ctx"] = numCtx.Value;
+var options = new ChatOptions { Tools = tools, AdditionalProperties = additional };
+```
+
+---
+
+## Terminal UI with Spectre.Console
+
+The agent uses Spectre.Console for a polished terminal experience:
+
+```csharp
+public enum UiStyle { Structured, Minimal, Panels }
+```
+
+A Spectre spinner shows while the model is thinking:
+
+```csharp
+var response = await AnsiConsole.Status()
+    .Spinner(Spectre.Console.Spinner.Known.Dots)
+    .SpinnerStyle(Style.Parse("blue"))
+    .StartAsync("[blue]Thinking…[/]", _ =>
+        chatClient.GetResponseAsync(_history, options, ct));
+```
+
+The three UI styles differ in how the prompt and response are framed:
+
+```
+Structured — horizontal rules, yellow "You ›" prompt
+Minimal    — rule-separated turns, same aesthetics
+Panels     — bordered panel per message
+```
+
+At startup, a 2-second timeout lets you pick a style; it defaults to
+Structured if you don't press a key.
+
+---
+
+## Markdown Rendering with Markdig
+
+Model responses contain markdown (`**bold**`, tables, code blocks). Printing
+them raw shows the syntax literally. Markdig parses the markdown AST and
+Spectre.Console renders each block as a widget:
+
+```csharp
+// Instead of AnsiConsole.MarkupLine(text)
+MarkdigSpectreRenderer.Render(text);
+```
+
+The renderer walks the Markdig AST and outputs native Spectre.Console widgets:
+
+| Markdown element | Spectre.Console widget |
+|-----------------|----------------------|
+| Heading | `Rule` with styled text |
+| Paragraph | `MarkupLine` with inline formatting |
+| Bullet/ordered list | Indented `MarkupLine` with bullet |
+| Fenced code block | `Panel` with grey border |
+| Pipe table | `Table` with teal border |
+| **Bold**, *italic* | `[bold]` / `[italic]` markup |
+
+Tables use `Markup.Escape` on all cell content to prevent Spectre markup
+errors from model output that happens to contain bracket characters.
+
+---
+
+## Error Logging with Serilog
+
+The agent logs errors to a rolling file — nothing goes to the console:
+
+```csharp
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.File(
+        path: Path.Combine("logs", "error-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Error)
+    .CreateLogger();
+```
+
+Unhandled exceptions are caught at the top level, logged to file, and shown
+as a friendly Spectre.Console error message.
+
+---
+
+## Startup Banner
+
+When the app starts, it prints a box showing what loaded:
+
+```
+┌───────────────────────────────────────────────────┐
+│  OracleSqlclAgent                                 │
+│  Provider  : Anthropic                            │
+│  Model     : claude-opus-4-6                      │
+│  Tools (7)  :                                     │
+│    - connections_list                             │
+│    - connect                                      │
+│    - disconnect                                   │
+│    - sql_run                                      │
+│    - sqlcl_run                                    │
+│    - schema_information                           │
+│    - request_status                               │
+│  Skills (5) :                                     │
+│    - oracle-sql-query                             │
+│    - oracle-table-schema                          │
+│    - oracle-table-constraints                     │
+│    - oracle-table-relationships                   │
+│    - oracle-database-info                         │
+│  Status    : READY                                │
+└───────────────────────────────────────────────────┘
+```
+
+---
+
+## Example Session
+
+```
+Select UI style:
+  [1] Structured - rules, spinners (default)
+  [2] Minimal    - rule-separated turns
+  [3] Panels     - bordered panel per message
+Choice [1]: 1
+Structured
+
+──── Oracle Assistant ────────────────────────────────
+Ask a database question. Type exit to quit.
+
+You › what is the average salary by department?
+
+● Thinking…
+
+Assistant ›
+
+| Department        | Avg Salary |
+|-------------------|------------|
+| Administration    |   4,400.00 |
+| Executive         |  19,333.33 |
+| Finance           |   8,600.00 |
+| Human Resources   |   6,500.00 |
+| IT                |   5,760.00 |
+| Marketing         |   9,500.00 |
+| Purchasing        |   4,150.00 |
+| Sales             |   8,955.88 |
+| Shipping          |   3,475.56 |
+
+─────────────────────────────────────────────────────
+
+You › exit
 ```
 
 ---
@@ -327,42 +478,63 @@ while (true)
 Try these against the running agent:
 
 ```
-connect to oracle hr schema
-show me records in employees table
-what is the schema of the employees table?
-map the foreign key relationships in the schema
+show me all employees in department 60
 what is the average salary by department?
 who are the managers?
-export employees to csv
+describe the structure of the jobs table
+map the foreign key relationships in the schema
+what oracle version is this?
+show me job history for employee 101
 ```
 
 ---
 
-## How Skills Compare: MAF vs Claude Code
+## How Skills Compare: This Agent vs Claude Code
 
-Both MAF and Claude Code use skills as modular prompt packages that give
-the agent focused expertise. The mechanisms are parallel:
+Both use skills as modular prompt packages that give the agent focused
+expertise. The mechanisms are parallel:
 
 **Claude Code skills** live in `.claude/skills/<name>/SKILL.md` and are
-invoked with `/skill-name` in the chat. The Claude Code harness advertises
-available skills, loads them on demand, and injects them into context.
+invoked with `/skill-name` in the chat. Claude Code advertises available
+skills, loads them on demand, and injects them into context.
 
-**MAF skills** are C# classes (or SKILL.md files in a folder) registered
-with `AgentSkillsProvider`. MAF advertises skill names and descriptions in
-the system prompt, then loads the full instructions when a task matches.
+**This agent's skills** are C# classes registered with `AgentSkillsProvider`.
+The system prompt includes skill names and descriptions so the model knows
+what's available. Because the model already has the `IChatClient` and
+`AITool` list in hand, it selects the right behavior from context.
 
 The key difference: Claude Code skills run inside Claude Code's harness.
-MAF skills run inside your own C# application — you own the agent, the
+This agent runs in your own C# application — you own the agent, the
 deployment, and the runtime.
+
+---
+
+## Running the Agent
+
+```bash
+cd src/OracleSqlclAgent
+dotnet run
+```
+
+Make sure the Oracle Docker container is running and `hr_local` is saved in
+SQLcl before starting.
 
 ---
 
 ## What's Next
 
-This agent runs locally against Docker Oracle XE. To point it at a
-different database, save a new named connection in SQLcl and update
-the `connection_name` in the skill instructions. No code changes needed.
+To point the agent at a different database, save a new named connection in
+SQLcl and update the `connection_name` reference in the skill instructions.
+No code changes needed for the agent itself.
 
-The full source — Docker setup, `.mcp.json`, Claude skills, and this MAF
+To switch from Anthropic to a local model:
+
+```bash
+dotnet user-secrets set "AI:Provider" "Ollama"
+dotnet user-secrets set "AI:Ollama:Model" "gemma4:latest"
+dotnet user-secrets set "AI:Ollama:NumCtx" "32768"
+```
+
+The full source — Docker setup, `.mcp.json`, Claude skills, and this C#
 agent — is available at:
 [github.com/workcontrolgit/oracle-sqlcl-ai-skills](https://github.com/workcontrolgit/oracle-sqlcl-ai-skills)
