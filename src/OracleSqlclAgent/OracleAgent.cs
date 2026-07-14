@@ -9,7 +9,8 @@ public sealed class OracleAgent(
     IChatClient chatClient,
     IList<AITool> tools,
     AgentSkillsProvider skills,
-    UiStyle style = UiStyle.Structured)
+    UiStyle style = UiStyle.Structured,
+    int? numCtx = null)
 {
     private const string SystemPrompt = """
         You are an Oracle database assistant. The database connection is hr_local.
@@ -54,7 +55,9 @@ public sealed class OracleAgent(
 
     private async Task<string> RunToolLoopAsync(CancellationToken ct)
     {
-        var options = new ChatOptions { Tools = tools };
+        var additional = new AdditionalPropertiesDictionary();
+        if (numCtx.HasValue) additional["num_ctx"] = numCtx.Value;
+        var options = new ChatOptions { Tools = tools, AdditionalProperties = additional };
 
         var response = await Spin("Thinking\u2026", _ =>
             chatClient.GetResponseAsync(_history, options, ct));

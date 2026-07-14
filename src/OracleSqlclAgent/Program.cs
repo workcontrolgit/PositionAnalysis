@@ -136,7 +136,9 @@ AnsiConsole.MarkupLine($"[green]{style}[/]\n");
 
 // ── 10. Run agent ─────────────────────────────────────────────────────────────
 
-await new OracleAgent(chatClient, mcpTools, skills, style).RunAsync();
+var numCtxRaw = configuration["AI:Ollama:NumCtx"];
+var numCtx = int.TryParse(numCtxRaw, out var n) ? (int?)n : null;
+await new OracleAgent(chatClient, mcpTools, skills, style, numCtx).RunAsync();
 
 }
 catch (Exception ex)
