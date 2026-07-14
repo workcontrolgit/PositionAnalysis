@@ -165,19 +165,22 @@ public sealed class OracleAgent(
         {
             case UiStyle.Structured:
                 AnsiConsole.MarkupLine("\n[bold green]Assistant \u203a[/]");
-                MarkdigSpectreRenderer.Render(text);
+                try { MarkdigSpectreRenderer.Render(text); }
+                catch { Console.WriteLine(text); }
                 AnsiConsole.Write(new Rule().RuleStyle("grey"));
                 AnsiConsole.WriteLine();
                 break;
             case UiStyle.Minimal:
                 AnsiConsole.Write(new Rule("[bold green]Assistant[/]").RuleStyle("grey").LeftJustified());
-                MarkdigSpectreRenderer.Render(text);
+                try { MarkdigSpectreRenderer.Render(text); }
+                catch { Console.WriteLine(text); }
                 AnsiConsole.Write(new Rule().RuleStyle("grey"));
                 AnsiConsole.WriteLine();
                 break;
             case UiStyle.Panels:
                 AnsiConsole.Write(new Rule("[bold green]Assistant[/]").RuleStyle("aquamarine3").LeftJustified());
-                MarkdigSpectreRenderer.Render(text);
+                try { MarkdigSpectreRenderer.Render(text); }
+                catch { Console.WriteLine(text); }
                 AnsiConsole.Write(new Rule().RuleStyle("aquamarine3"));
                 AnsiConsole.WriteLine();
                 break;
