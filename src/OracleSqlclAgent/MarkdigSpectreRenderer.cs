@@ -35,21 +35,30 @@ public static class MarkdigSpectreRenderer
 
     private static void RenderBlock(Block block)
     {
-        switch (block)
+        try
         {
-            case HeadingBlock h:        RenderHeading(h);        break;
-            case ParagraphBlock p:      RenderParagraph(p);      break;
-            case ListBlock list:        RenderList(list, 0);     break;
-            case FencedCodeBlock code:  RenderCodeBlock(code);   break;
-            case CodeBlock code:        RenderCodeBlock(code);   break;
-            case Markdig.Extensions.Tables.Table table: RenderTable(table); break;
-            case ThematicBreakBlock:
-                AnsiConsole.Write(new Rule().RuleStyle("grey"));
-                break;
-            case QuoteBlock quote:
-                AnsiConsole.MarkupLine("[grey]│[/]");
-                RenderBlocks(quote);
-                break;
+            switch (block)
+            {
+                case HeadingBlock h:        RenderHeading(h);        break;
+                case ParagraphBlock p:      RenderParagraph(p);      break;
+                case ListBlock list:        RenderList(list, 0);     break;
+                case FencedCodeBlock code:  RenderCodeBlock(code);   break;
+                case CodeBlock code:        RenderCodeBlock(code);   break;
+                case Markdig.Extensions.Tables.Table table: RenderTable(table); break;
+                case ThematicBreakBlock:
+                    AnsiConsole.Write(new Rule().RuleStyle("grey"));
+                    break;
+                case QuoteBlock quote:
+                    AnsiConsole.MarkupLine("[grey]│[/]");
+                    RenderBlocks(quote);
+                    break;
+            }
+        }
+        catch
+        {
+            // Fall back to plain text for this block only
+            if (block is LeafBlock leaf)
+                Console.WriteLine(leaf.Lines.ToString());
         }
     }
 
@@ -113,11 +122,12 @@ public static class MarkdigSpectreRenderer
 
         foreach (var row in table.OfType<Markdig.Extensions.Tables.TableRow>())
         {
+            // Use plain text for cells to avoid Spectre markup errors from model output
             var cells = row.OfType<Markdig.Extensions.Tables.TableCell>()
                 .Select(c =>
                 {
                     var para = c.OfType<ParagraphBlock>().FirstOrDefault();
-                    return para is not null ? InlinesToMarkup(para.Inline) : string.Empty;
+                    return para is not null ? Markup.Escape(ExtractPlainText(para.Inline)) : string.Empty;
                 })
                 .ToArray();
 
