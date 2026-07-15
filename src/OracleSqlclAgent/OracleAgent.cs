@@ -1,29 +1,13 @@
-using Microsoft.Extensions.AI;
+using Microsoft.Agents.AI;
 using Spectre.Console;
 
 namespace OracleSqlclAgent;
 
 public enum UiStyle { Structured, Minimal, Panels }
 
-public sealed class OracleAgent(
-    IChatClient chatClient,
-    IList<AITool> tools,
-    AgentSkillsProvider skills,
-    UiStyle style = UiStyle.Structured,
-    int? numCtx = null)
+public sealed class OracleAgent(AIAgent agent, UiStyle style = UiStyle.Structured)
 {
-    private const string SystemPrompt = """
-        You are an Oracle database assistant. The database connection is hr_local.
-        Always call the connect tool before running any query.
-        Format query results as markdown tables. Use **bold** for key values.
-        Do not list your internal skill names. Do not introduce yourself with a menu.
-        Wait for the user's question and answer it directly.
-        """;
-
-    private readonly List<ChatMessage> _history =
-    [
-        new(ChatRole.System, SystemPrompt)
-    ];
+    private AgentSession? _session;
 
     public async Task RunAsync(CancellationToken ct = default)
     {
@@ -35,9 +19,7 @@ public sealed class OracleAgent(
             if (string.IsNullOrWhiteSpace(input)) continue;
             if (input.Equals("exit", StringComparison.OrdinalIgnoreCase)) break;
 
-            _history.Add(new ChatMessage(ChatRole.User, input));
-
-            var text = await RunToolLoopAsync(ct);
+            var text = await RunAgentAsync(input, ct);
             RenderResponse(text);
         }
     }
@@ -47,61 +29,18 @@ public sealed class OracleAgent(
         if (string.IsNullOrWhiteSpace(input))
             return string.Empty;
 
-        _history.Add(new ChatMessage(ChatRole.User, input));
-        return await RunToolLoopAsync(ct);
+        return await RunAgentAsync(input, ct);
     }
 
-    // ── Manual tool call loop ────────────────────────────────────────────────
+    // ── MAF agent invocation ─────────────────────────────────────────────────
 
-    private async Task<string> RunToolLoopAsync(CancellationToken ct)
+    private async Task<string> RunAgentAsync(string input, CancellationToken ct)
     {
-        var additional = new AdditionalPropertiesDictionary();
-        if (numCtx.HasValue) additional["num_ctx"] = numCtx.Value;
-        var options = new ChatOptions { Tools = tools, AdditionalProperties = additional };
-
+        _session ??= await agent.CreateSessionAsync(ct);
         var response = await Spin("Thinking\u2026", _ =>
-            chatClient.GetResponseAsync(_history, options, ct));
+            agent.RunAsync(input, _session, null, ct));
 
-        while (true)
-        {
-            var toolCalls = response.Messages
-                .SelectMany(m => m.Contents.OfType<FunctionCallContent>())
-                .ToList();
-
-            if (toolCalls.Count == 0)
-            {
-                _history.AddMessages(response);
-                return response.Text ?? string.Empty;
-            }
-
-            // Append assistant messages (with tool call requests) to history
-            foreach (var msg in response.Messages)
-                _history.Add(msg);
-
-            // Execute each tool and append result to history
-            foreach (var call in toolCalls)
-            {
-                var fn = tools.FirstOrDefault(t => t.Name == call.Name) as AIFunction;
-                object? rawResult;
-
-                if (fn is null)
-                {
-                    rawResult = $"Tool '{call.Name}' not found.";
-                }
-                else
-                {
-                    var fnArgs = call.Arguments is null ? null : new AIFunctionArguments(call.Arguments);
-                    try { rawResult = await fn.InvokeAsync(fnArgs, ct); }
-                    catch (Exception ex) { rawResult = $"Error: {ex.Message}"; }
-                }
-
-                _history.Add(new ChatMessage(ChatRole.Tool,
-                    [new FunctionResultContent(call.CallId ?? string.Empty, rawResult)]));
-            }
-
-            response = await Spin("Thinking\u2026", _ =>
-                chatClient.GetResponseAsync(_history, options, ct));
-        }
+        return response.Text ?? string.Empty;
     }
 
     // ── Spinner ──────────────────────────────────────────────────────────────

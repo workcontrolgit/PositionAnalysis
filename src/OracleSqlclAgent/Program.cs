@@ -1,4 +1,7 @@
-using Anthropic;
+using Azure;
+using Azure.AI.OpenAI;
+using elbruno.Extensions.AI.Claude;
+using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using ModelContextProtocol.Client;
@@ -38,13 +41,13 @@ try
 
 var sqlclPath = configuration["SqlclMcp:Path"]
     ?? throw new InvalidOperationException(
-        "Missing configuration: SqlclMcp:Path — update appsettings.json or appsettings.Development.json " +
+        "Missing configuration: SqlclMcp:Path — update appsettings.json or user secrets " +
         "with the full path to sql.exe from the Oracle SQL Developer VS Code extension.");
 
 if (!File.Exists(sqlclPath))
     throw new InvalidOperationException(
         $"SQLcl binary not found at: {sqlclPath}\n" +
-        "Update SqlclMcp:Path in appsettings.Development.json to the correct path.");
+        "Update SqlclMcp:Path in user secrets to the correct path.");
 
 // ── 4. Start SQLcl MCP server ─────────────────────────────────────────────────
 
@@ -63,7 +66,7 @@ var mcpTools = (await mcpClient.ListToolsAsync()).Cast<AITool>().ToList();
 
 // ── 6. Register skills ────────────────────────────────────────────────────────
 
-var skills = new AgentSkillsProvider();
+var skills = new OracleSqlclAgent.AgentSkillsProvider();
 skills.Register(new OracleSqlQuerySkill());
 skills.Register(new OracleTableSchemaSkill());
 skills.Register(new OracleTableConstraintsSkill());
@@ -74,17 +77,35 @@ const int skillCount = 5;
 
 // ── 7. Build IChatClient ──────────────────────────────────────────────────────
 
-var provider = configuration["AI:Provider"] ?? "Anthropic";
+var provider = configuration["AI:Provider"] ?? "Claude";
 IChatClient chatClient = BuildChatClient(configuration, provider);
 var modelDisplay = GetModelDisplay(configuration, provider);
 
-// ── 8. Startup banner ─────────────────────────────────────────────────────────
+// ── 8. Build MAF agent ────────────────────────────────────────────────────────
+
+var systemPrompt = $"""
+    You are an Oracle database assistant. The database connection is hr_local.
+    Always call the connect tool before running any query.
+    Format query results as markdown tables. Use **bold** for key values.
+    Do not list your internal skill names. Do not introduce yourself with a menu.
+    Wait for the user's question and answer it directly.
+
+    Available skills:
+    {skills.BuildSkillsContext()}
+    """;
+
+AIAgent mafAgent = chatClient.AsAIAgent(
+    name: "OracleAgent",
+    instructions: systemPrompt,
+    tools: [.. mcpTools]);
+
+// ── 9. Startup banner ─────────────────────────────────────────────────────────
 
 const int W = 45;
 string L(string s) => $"│  {s.PadRight(W)}│";
 string T(string s) => $"│    - {s.PadRight(W - 4)}│";
 Console.WriteLine($"┌{new string('─', W + 2)}┐");
-Console.WriteLine(L("OracleSqlclAgent"));
+Console.WriteLine(L("OracleSqlclAgent (Microsoft Agent Framework)"));
 Console.WriteLine(L($"Provider  : {provider}"));
 Console.WriteLine(L($"Model     : {modelDisplay}"));
 Console.WriteLine(L($"Tools ({mcpTools.Count})  :"));
@@ -100,7 +121,7 @@ Console.WriteLine(L("Status    : READY"));
 Console.WriteLine($"└{new string('─', W + 2)}┘");
 Console.WriteLine();
 
-// ── 9. UI style picker (2s timeout → Structured) ──────────────────────────────
+// ── 10. UI style picker (2s timeout → Structured) ─────────────────────────────
 
 var style = UiStyle.Structured;
 
@@ -134,11 +155,9 @@ catch (OperationCanceledException) { }
 
 AnsiConsole.MarkupLine($"[green]{style}[/]\n");
 
-// ── 10. Run agent ─────────────────────────────────────────────────────────────
+// ── 11. Run agent ─────────────────────────────────────────────────────────────
 
-var numCtxRaw = configuration["AI:Ollama:NumCtx"];
-var numCtx = int.TryParse(numCtxRaw, out var n) ? (int?)n : null;
-await new OracleAgent(chatClient, mcpTools, skills, style, numCtx).RunAsync();
+await new OracleAgent(mafAgent, style).RunAsync();
 
 }
 catch (Exception ex)
@@ -162,19 +181,66 @@ static IChatClient BuildChatClient(IConfiguration config, string provider)
         var endpoint = config["AI:Ollama:Endpoint"] ?? "http://localhost:11434";
         var model    = config["AI:Ollama:Model"]    ?? "llama3.2";
         var http     = new HttpClient { BaseAddress = new Uri(endpoint), Timeout = Timeout.InfiniteTimeSpan };
-        return (IChatClient)new OllamaApiClient(http, model, null!);
+        IChatClient ollama = (IChatClient)new OllamaApiClient(http, model, null!);
+
+        // Inject num_ctx into every request via middleware if configured
+        var numCtxRaw = config["AI:Ollama:NumCtx"];
+        if (int.TryParse(numCtxRaw, out var numCtx))
+        {
+            return ollama.AsBuilder()
+                .Use(async (messages, options, next, ct) =>
+                {
+                    options ??= new ChatOptions();
+                    options.AdditionalProperties ??= new AdditionalPropertiesDictionary();
+                    options.AdditionalProperties["num_ctx"] = numCtx;
+                    await next(messages, options, ct);
+                })
+                .Build();
+        }
+
+        return ollama;
     }
 
-    // Default: Anthropic
-    var apiKey = config["AI:Anthropic:ApiKey"];
-    var claude = string.IsNullOrEmpty(apiKey)
-        ? new AnthropicClient()                         // uses ANTHROPIC_API_KEY env var
-        : new AnthropicClient() { ApiKey = apiKey };
-    var claudeModel = config["AI:Anthropic:Model"] ?? "claude-opus-4-6";
-    return claude.AsIChatClient(claudeModel);
+    if (string.Equals(provider, "AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+    {
+        var aoaiEndpoint   = config["AI:AzureOpenAI:Endpoint"]
+            ?? throw new InvalidOperationException(
+                "Missing AI:AzureOpenAI:Endpoint — set it in user secrets:\n" +
+                "  dotnet user-secrets set \"AI:AzureOpenAI:Endpoint\" \"https://<resource>.cognitiveservices.azure.com/\"");
+        var aoaiDeployment = config["AI:AzureOpenAI:DeploymentName"] ?? "gpt-5-mini";
+        var aoaiApiKey     = config["AI:AzureOpenAI:ApiKey"]
+            ?? throw new InvalidOperationException(
+                "Missing AI:AzureOpenAI:ApiKey — set it in user secrets:\n" +
+                "  dotnet user-secrets set \"AI:AzureOpenAI:ApiKey\" \"<your-key>\"");
+
+        return new AzureOpenAIClient(
+                new Uri(aoaiEndpoint),
+                new AzureKeyCredential(aoaiApiKey))
+            .GetChatClient(aoaiDeployment)
+            .AsIChatClient();
+    }
+
+    // Default: Claude via Azure AI Foundry
+    var claudeEndpoint   = config["AI:Claude:Endpoint"]
+        ?? throw new InvalidOperationException(
+            "Missing AI:Claude:Endpoint — set it in user secrets:\n" +
+            "  dotnet user-secrets set \"AI:Claude:Endpoint\" \"https://<resource>.services.ai.azure.com/anthropic/v1/messages\"");
+    var claudeDeployment = config["AI:Claude:DeploymentName"] ?? "claude-opus-4-6";
+    var claudeApiKey     = config["AI:Claude:ApiKey"]
+        ?? throw new InvalidOperationException(
+            "Missing AI:Claude:ApiKey — set it in user secrets:\n" +
+            "  dotnet user-secrets set \"AI:Claude:ApiKey\" \"<your-key>\"");
+
+    return new AzureClaudeClient(
+        endpoint:  new Uri(claudeEndpoint),
+        modelId:   claudeDeployment,
+        apiKey:    claudeApiKey);
 }
 
 static string GetModelDisplay(IConfiguration config, string provider) =>
-    string.Equals(provider, "Ollama", StringComparison.OrdinalIgnoreCase)
-        ? config["AI:Ollama:Model"] ?? "llama3.2"
-        : config["AI:Anthropic:Model"] ?? "claude-opus-4-6";
+    provider.ToLowerInvariant() switch
+    {
+        "ollama"      => config["AI:Ollama:Model"]              ?? "llama3.2",
+        "azureopenai" => config["AI:AzureOpenAI:DeploymentName"] ?? "gpt-5-mini",
+        _             => config["AI:Claude:DeploymentName"]      ?? "claude-opus-4-6"
+    };
