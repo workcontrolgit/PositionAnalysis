@@ -7,11 +7,7 @@ directly to your Oracle database without any middleware, scripts, or API wrapper
 By the end of this series, you'll type a plain-English question in Claude and
 get back live Oracle data. This first part gets the tooling running.
 
-**Series:**
-- Part 1: Setup — VS Code extension, Docker HR schema ← you are here
-- Part 2: MCP Server Configuration + Claude Skills
-- Part 3: Prompt Demos — Querying Oracle in Plain English
-- Part 4: C# Console Agent with Microsoft.Extensions.AI
+**Series:** [Talk to Oracle with Claude AI](https://medium.com/scrum-and-coke/talk-to-oracle-with-claude-ai-series-preface-19b31fdb782e)
 
 ---
 

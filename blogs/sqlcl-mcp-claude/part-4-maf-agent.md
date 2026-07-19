@@ -1,4 +1,4 @@
-# Talk to Oracle with an AI Agent — Part 4: C# Console Agent with Microsoft.Extensions.AI
+# Talk to Oracle with an AI Agent — Part 4: C# Console Agent with Microsoft Agent Framework (MAF)
 
 Parts 1–3 showed how Claude Code talks to Oracle through the SQLcl MCP server
 using built-in skills. This part builds a standalone C# console application
@@ -8,11 +8,7 @@ You type a plain-English question. The agent queries your local Oracle HR
 database through the SQLcl MCP server and answers you — with results rendered
 as formatted tables right in the terminal.
 
-**Series:**
-- Part 1: Setup — VS Code extension, Docker HR schema
-- Part 2: MCP Server Configuration + Claude Skills
-- Part 3: Prompt Demos — Querying Oracle in Plain English
-- Part 4: C# Console Agent ← you are here
+**Series:** [Talk to Oracle with Claude AI](https://medium.com/scrum-and-coke/talk-to-oracle-with-claude-ai-series-preface-19b31fdb782e)
 
 ← [Part 3: Prompt Demos](#)
 
@@ -25,11 +21,12 @@ A .NET 10 console app (`OracleSqlclAgent`) that:
 1. Starts the SQLcl binary as an MCP subprocess
 2. Discovers the database tools it exposes
 3. Accepts natural language questions in a Spectre.Console TUI
-4. Runs an agentic loop — calling tools, feeding results back, looping until done
+4. Uses `Microsoft.Agents.AI`'s `AIAgent` to handle the agentic loop — tool calls, result feeding, and follow-up turns all managed automatically
 5. Renders the response (tables, bold text, code blocks) using Markdig + Spectre.Console
 
-The agent supports two AI backends via configuration: **Anthropic Claude** or
-**local Ollama** — switchable without code changes.
+The agent supports three AI backends via configuration: **Azure Claude** (via
+Azure AI Foundry), **Azure OpenAI**, or **local Ollama** — switchable without
+code changes.
 
 ---
 
@@ -38,7 +35,7 @@ The agent supports two AI backends via configuration: **Anthropic Claude** or
 - Docker Desktop with the Oracle HR container running (from Part 1)
 - `hr_local` saved connection in SQLcl (from Part 1)
 - .NET 10 SDK
-- An Anthropic API key **or** a local Ollama installation
+- An Azure AI Foundry endpoint (Claude or Azure OpenAI) **or** a local Ollama installation
 
 ---
 
@@ -53,9 +50,12 @@ dotnet new console --framework net10.0
 Install the packages:
 
 ```bash
-dotnet add package Anthropic
-dotnet add package ModelContextProtocol
+dotnet add package Microsoft.Agents.AI
 dotnet add package Microsoft.Extensions.AI
+dotnet add package Microsoft.Extensions.AI.OpenAI
+dotnet add package Azure.AI.OpenAI
+dotnet add package elbruno.Extensions.AI.Claude
+dotnet add package ModelContextProtocol
 dotnet add package OllamaSharp
 dotnet add package Spectre.Console
 dotnet add package Markdig
@@ -66,10 +66,16 @@ dotnet add package Serilog
 dotnet add package Serilog.Sinks.File
 ```
 
-> **Note:** There is no `Microsoft.AgentFramework` NuGet package. The agent
-> abstraction in this project is built directly on `Microsoft.Extensions.AI`,
-> which provides the `IChatClient` interface that both the Anthropic SDK and
-> OllamaSharp implement.
+**Key packages:**
+
+| Package | Purpose |
+|---|---|
+| `Microsoft.Agents.AI` | `AIAgent` abstraction — manages the agentic tool loop |
+| `Microsoft.Extensions.AI` | `IChatClient` common interface for all AI backends |
+| `Azure.AI.OpenAI` | Azure OpenAI client |
+| `elbruno.Extensions.AI.Claude` | Claude via Azure AI Foundry as `IChatClient` |
+| `ModelContextProtocol` | MCP client — starts SQLcl as a subprocess |
+| `OllamaSharp` | Local Ollama backend |
 
 ---
 
@@ -80,9 +86,16 @@ Create `appsettings.json`:
 ```json
 {
   "AI": {
-    "Provider": "Anthropic",
-    "Anthropic": {
-      "Model": "claude-opus-4-6"
+    "Provider": "AzureOpenAI",
+    "AzureOpenAI": {
+      "Endpoint": "https://<resource>.cognitiveservices.azure.com/",
+      "DeploymentName": "gpt-4o-mini",
+      "ApiKey": ""
+    },
+    "Claude": {
+      "Endpoint": "https://<resource>.services.ai.azure.com/anthropic/v1/messages",
+      "DeploymentName": "claude-opus-4-6",
+      "ApiKey": ""
     },
     "Ollama": {
       "Endpoint": "http://localhost:11434",
@@ -101,11 +114,27 @@ stay out of source control:
 ```bash
 dotnet user-secrets init
 dotnet user-secrets set "SqlclMcp:Path" "C:\Users\<you>\.vscode\extensions\oracle.sql-developer-26.2.0-win32-x64\dbtools\sqlcl\bin\sql.exe"
-dotnet user-secrets set "AI:Provider" "Anthropic"
-dotnet user-secrets set "AI:Anthropic:ApiKey" "<your-api-key>"
 ```
 
-To use local Ollama instead:
+**To use Azure OpenAI (default):**
+
+```bash
+dotnet user-secrets set "AI:Provider" "AzureOpenAI"
+dotnet user-secrets set "AI:AzureOpenAI:Endpoint" "https://<resource>.cognitiveservices.azure.com/"
+dotnet user-secrets set "AI:AzureOpenAI:DeploymentName" "gpt-4o-mini"
+dotnet user-secrets set "AI:AzureOpenAI:ApiKey" "<your-api-key>"
+```
+
+**To use Claude via Azure AI Foundry:**
+
+```bash
+dotnet user-secrets set "AI:Provider" "Claude"
+dotnet user-secrets set "AI:Claude:Endpoint" "https://<resource>.services.ai.azure.com/anthropic/v1/messages"
+dotnet user-secrets set "AI:Claude:DeploymentName" "claude-opus-4-6"
+dotnet user-secrets set "AI:Claude:ApiKey" "<your-api-key>"
+```
+
+**To use local Ollama:**
 
 ```bash
 dotnet user-secrets set "AI:Provider" "Ollama"
@@ -150,11 +179,13 @@ schema_information, request_status
 
 ## Build the IChatClient
 
-`Microsoft.Extensions.AI` defines `IChatClient` as a common interface for any
-AI backend. Both `Anthropic` and `OllamaSharp` implement it:
+`Microsoft.Extensions.AI` defines `IChatClient` as a common interface for all
+AI backends. The `BuildChatClient` helper resolves the right backend from config:
 
 ```csharp
-using Anthropic;
+using Azure;
+using Azure.AI.OpenAI;
+using elbruno.Extensions.AI.Claude;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
 
@@ -165,21 +196,62 @@ static IChatClient BuildChatClient(IConfiguration config, string provider)
         var endpoint = config["AI:Ollama:Endpoint"] ?? "http://localhost:11434";
         var model    = config["AI:Ollama:Model"]    ?? "llama3.2";
         var http     = new HttpClient { BaseAddress = new Uri(endpoint), Timeout = Timeout.InfiniteTimeSpan };
-        return (IChatClient)new OllamaApiClient(http, model, null!);
+        IChatClient ollama = (IChatClient)new OllamaApiClient(http, model, null!);
+
+        // Inject num_ctx into every request via middleware if configured
+        var numCtxRaw = config["AI:Ollama:NumCtx"];
+        if (int.TryParse(numCtxRaw, out var numCtx))
+        {
+            return ollama.AsBuilder()
+                .Use(async (messages, options, next, ct) =>
+                {
+                    options ??= new ChatOptions();
+                    options.AdditionalProperties ??= new AdditionalPropertiesDictionary();
+                    options.AdditionalProperties["num_ctx"] = numCtx;
+                    await next(messages, options, ct);
+                })
+                .Build();
+        }
+
+        return ollama;
     }
 
-    // Anthropic — uses ANTHROPIC_API_KEY env var if no key in config
-    var apiKey = config["AI:Anthropic:ApiKey"];
-    var claude = string.IsNullOrEmpty(apiKey)
-        ? new AnthropicClient()
-        : new AnthropicClient() { ApiKey = apiKey };
-    var claudeModel = config["AI:Anthropic:Model"] ?? "claude-opus-4-6";
-    return claude.AsIChatClient(claudeModel);
+    if (string.Equals(provider, "AzureOpenAI", StringComparison.OrdinalIgnoreCase))
+    {
+        var endpoint   = config["AI:AzureOpenAI:Endpoint"]
+            ?? throw new InvalidOperationException("Missing AI:AzureOpenAI:Endpoint");
+        var deployment = config["AI:AzureOpenAI:DeploymentName"] ?? "gpt-4o-mini";
+        var apiKey     = config["AI:AzureOpenAI:ApiKey"]
+            ?? throw new InvalidOperationException("Missing AI:AzureOpenAI:ApiKey");
+
+        return new AzureOpenAIClient(
+                new Uri(endpoint),
+                new AzureKeyCredential(apiKey))
+            .GetChatClient(deployment)
+            .AsIChatClient();
+    }
+
+    // Default: Claude via Azure AI Foundry
+    var claudeEndpoint   = config["AI:Claude:Endpoint"]
+        ?? throw new InvalidOperationException("Missing AI:Claude:Endpoint");
+    var claudeDeployment = config["AI:Claude:DeploymentName"] ?? "claude-opus-4-6";
+    var claudeApiKey     = config["AI:Claude:ApiKey"]
+        ?? throw new InvalidOperationException("Missing AI:Claude:ApiKey");
+
+    return new AzureClaudeClient(
+        endpoint:  new Uri(claudeEndpoint),
+        modelId:   claudeDeployment,
+        apiKey:    claudeApiKey);
 }
 ```
 
-The rest of the agent code never references Anthropic or Ollama directly —
-it only calls `IChatClient`.
+The rest of the agent code never references a specific AI vendor — it only
+calls `IChatClient`.
+
+> 💡 **Ollama context window:** For local models, `num_ctx` is injected via
+> `IChatClient` middleware so every request automatically carries the configured
+> context window size. This is configured in user secrets with
+> `AI:Ollama:NumCtx`.
 
 ---
 
@@ -206,19 +278,20 @@ public sealed class OracleSqlQuerySkill : AgentClassSkill
 {
     public override string Name => "oracle-sql-query";
     public override string Description =>
-        "To run general SQL queries against the Oracle HR database";
+        "Run any SQL query against Oracle — SELECT, aggregations, data analysis, custom queries.";
 
     protected override string Instructions => """
         ## Oracle SQL Query
 
-        Use this skill when the user asks to query Oracle data.
+        Use this skill when the user asks to query data, count records, calculate averages,
+        or run any custom SQL against the Oracle HR schema.
 
         Steps:
-        1. Call connect with connection_name = "hr_local"
+        1. Call `connect` with connection_name = "hr_local"
         2. Build the appropriate SQL based on the user's request
-        3. Call sql_run with the SQL
-        4. Format results as a markdown table
-        5. Call disconnect when done
+        3. Call `sql_run` with the SQL
+        4. Format the results in plain text — no markdown tables
+        5. Call `disconnect` when done
         """;
 }
 
@@ -226,7 +299,7 @@ public sealed class OracleTableSchemaSkill : AgentClassSkill
 {
     public override string Name => "oracle-table-schema";
     public override string Description =>
-        "To describe Oracle table structure — columns, data types, nullability";
+        "Describe Oracle table structure — columns, data types, nullability.";
 
     protected override string Instructions => """
         ## Oracle Table Schema
@@ -234,13 +307,14 @@ public sealed class OracleTableSchemaSkill : AgentClassSkill
         Use when the user asks about a table's structure or columns.
 
         Steps:
-        1. Call connect with connection_name = "hr_local"
-        2. Run: SELECT column_name, data_type, nullable, data_length
-                 FROM user_tab_columns
-                 WHERE table_name = UPPER('<table>')
-                 ORDER BY column_id
-        3. Present columns with type and nullability as a markdown table
-        4. Call disconnect when done
+        1. Call `connect` with connection_name = "hr_local"
+        2. Run:
+           SELECT column_name, data_type, data_length, nullable
+           FROM user_tab_columns
+           WHERE table_name = UPPER('<table>')
+           ORDER BY column_id
+        3. Present each column with its type, length, and nullability (Y = optional, N = required)
+        4. Call `disconnect` when done
         """;
 }
 ```
@@ -268,64 +342,74 @@ skills.Register(new OracleDatabaseInfoSkill());
 
 ---
 
-## The Agentic Loop
+## Build the MAF Agent
 
-The agent loop is manual — call the model, check for tool requests, execute
-them, feed results back, repeat until the model returns a final answer:
+`Microsoft.Agents.AI` provides the `AIAgent` class, which wraps an
+`IChatClient` and handles the full agentic tool loop automatically — no
+manual function-call plumbing required.
+
+Construct the agent after building the `IChatClient` and loading the MCP tools:
 
 ```csharp
-private async Task<string> RunToolLoopAsync(CancellationToken ct)
+using Microsoft.Agents.AI;
+
+var systemPrompt = $"""
+    You are an Oracle database assistant. The database connection is hr_local.
+    Always call the connect tool before running any query.
+    Format query results as markdown tables. Use **bold** for key values.
+    Do not list your internal skill names. Do not introduce yourself with a menu.
+    Wait for the user's question and answer it directly.
+
+    Available skills:
+    {skills.BuildSkillsContext()}
+    """;
+
+AIAgent mafAgent = chatClient.AsAIAgent(
+    name: "OracleAgent",
+    instructions: systemPrompt,
+    tools: [.. mcpTools]);
+```
+
+`chatClient.AsAIAgent(...)` is an extension method from `Microsoft.Agents.AI`
+that wraps the `IChatClient` with session management and the tool-call loop.
+
+---
+
+## The Agentic Loop
+
+With `Microsoft.Agents.AI`, the tool loop is fully managed by the framework.
+`OracleAgent` opens a session once and calls `agent.RunAsync()` per turn:
+
+```csharp
+public sealed class OracleAgent(AIAgent agent, UiStyle style = UiStyle.Structured)
 {
-    var options = new ChatOptions { Tools = tools };
+    private AgentSession? _session;
 
-    var response = await chatClient.GetResponseAsync(_history, options, ct);
-
-    while (true)
+    private async Task<string> RunAgentAsync(string input, CancellationToken ct)
     {
-        var toolCalls = response.Messages
-            .SelectMany(m => m.Contents.OfType<FunctionCallContent>())
-            .ToList();
+        // Session is created once and reused across turns
+        _session ??= await agent.CreateSessionAsync(ct);
 
-        // No more tool calls — the model is done
-        if (toolCalls.Count == 0)
-        {
-            _history.AddMessages(response);
-            return response.Text ?? string.Empty;
-        }
+        var response = await Spin("Thinking…", _ =>
+            agent.RunAsync(input, _session, null, ct));
 
-        // Append assistant's tool-call messages to history
-        foreach (var msg in response.Messages)
-            _history.Add(msg);
-
-        // Execute each tool and append the result
-        foreach (var call in toolCalls)
-        {
-            var fn = tools.FirstOrDefault(t => t.Name == call.Name) as AIFunction;
-            object? rawResult = fn is null
-                ? $"Tool '{call.Name}' not found."
-                : await fn.InvokeAsync(new AIFunctionArguments(call.Arguments), ct);
-
-            _history.Add(new ChatMessage(ChatRole.Tool,
-                [new FunctionResultContent(call.CallId ?? string.Empty, rawResult)]));
-        }
-
-        // Ask the model again with tool results in history
-        response = await chatClient.GetResponseAsync(_history, options, ct);
+        return response.Text ?? string.Empty;
     }
 }
 ```
 
-The MCP tools (`connect`, `sql_run`, `disconnect`, etc.) are the same `AITool`
-objects as before — the loop treats them identically to any other tool.
+Internally, `agent.RunAsync()` handles the full cycle for each user turn:
 
-For Ollama, pass `num_ctx` via `AdditionalProperties` so the context window
-is respected:
+1. Sends the user message to the model with tool definitions attached
+2. If the model requests tool calls, executes them (MCP tools: `connect`, `sql_run`, etc.)
+3. Feeds the tool results back to the model
+4. Repeats until the model returns a final text response
 
-```csharp
-var additional = new AdditionalPropertiesDictionary();
-if (numCtx.HasValue) additional["num_ctx"] = numCtx.Value;
-var options = new ChatOptions { Tools = tools, AdditionalProperties = additional };
-```
+No manual `FunctionCallContent` parsing, no `ChatRole.Tool` message construction,
+no loop management — the framework owns all of that.
+
+The session (`AgentSession`) carries conversation history across turns, so
+context accumulates naturally as you ask follow-up questions.
 
 ---
 
@@ -340,11 +424,11 @@ public enum UiStyle { Structured, Minimal, Panels }
 A Spectre spinner shows while the model is thinking:
 
 ```csharp
-var response = await AnsiConsole.Status()
-    .Spinner(Spectre.Console.Spinner.Known.Dots)
-    .SpinnerStyle(Style.Parse("blue"))
-    .StartAsync("[blue]Thinking…[/]", _ =>
-        chatClient.GetResponseAsync(_history, options, ct));
+private static Task<T> Spin<T>(string status, Func<StatusContext, Task<T>> action) =>
+    AnsiConsole.Status()
+        .Spinner(Spectre.Console.Spinner.Known.Dots)
+        .SpinnerStyle(Style.Parse("blue"))
+        .StartAsync($"[blue]{status}[/]", action);
 ```
 
 The three UI styles differ in how the prompt and response are framed:
@@ -411,26 +495,26 @@ as a friendly Spectre.Console error message.
 When the app starts, it prints a box showing what loaded:
 
 ```
-┌───────────────────────────────────────────────────┐
-│  OracleSqlclAgent                                 │
-│  Provider  : Anthropic                            │
-│  Model     : claude-opus-4-6                      │
-│  Tools (7)  :                                     │
-│    - connections_list                             │
-│    - connect                                      │
-│    - disconnect                                   │
-│    - sql_run                                      │
-│    - sqlcl_run                                    │
-│    - schema_information                           │
-│    - request_status                               │
-│  Skills (5) :                                     │
-│    - oracle-sql-query                             │
-│    - oracle-table-schema                          │
-│    - oracle-table-constraints                     │
-│    - oracle-table-relationships                   │
-│    - oracle-database-info                         │
-│  Status    : READY                                │
-└───────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────┐
+│  OracleSqlclAgent (Microsoft Agent Framework)         │
+│  Provider  : AzureOpenAI                              │
+│  Model     : gpt-4o-mini                              │
+│  Tools (7)  :                                         │
+│    - connections_list                                 │
+│    - connect                                          │
+│    - disconnect                                       │
+│    - sql_run                                          │
+│    - sqlcl_run                                        │
+│    - schema_information                               │
+│    - request_status                                   │
+│  Skills (5) :                                         │
+│    - oracle-sql-query                                 │
+│    - oracle-table-schema                              │
+│    - oracle-table-constraints                         │
+│    - oracle-table-relationships                       │
+│    - oracle-database-info                             │
+│  Status    : READY                                    │
+└───────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -500,8 +584,8 @@ skills, loads them on demand, and injects them into context.
 
 **This agent's skills** are C# classes registered with `AgentSkillsProvider`.
 The system prompt includes skill names and descriptions so the model knows
-what's available. Because the model already has the `IChatClient` and
-`AITool` list in hand, it selects the right behavior from context.
+what's available. Because the model already has the `AIAgent` and MCP tools
+in hand, it selects the right behavior from context.
 
 The key difference: Claude Code skills run inside Claude Code's harness.
 This agent runs in your own C# application — you own the agent, the
@@ -521,19 +605,42 @@ SQLcl before starting.
 
 ---
 
-## What's Next
+## Extending the Agent
 
 To point the agent at a different database, save a new named connection in
 SQLcl and update the `connection_name` reference in the skill instructions.
 No code changes needed for the agent itself.
 
-To switch from Anthropic to a local model:
+To switch AI backends, update `AI:Provider` in user secrets:
 
 ```bash
+# Switch to local Ollama
 dotnet user-secrets set "AI:Provider" "Ollama"
 dotnet user-secrets set "AI:Ollama:Model" "gemma4:latest"
 dotnet user-secrets set "AI:Ollama:NumCtx" "32768"
+
+# Switch to Claude via Azure AI Foundry
+dotnet user-secrets set "AI:Provider" "Claude"
+dotnet user-secrets set "AI:Claude:Endpoint" "https://<resource>.services.ai.azure.com/anthropic/v1/messages"
+dotnet user-secrets set "AI:Claude:DeploymentName" "claude-opus-4-6"
+dotnet user-secrets set "AI:Claude:ApiKey" "<your-key>"
 ```
+
+---
+
+## Wrapping Up
+
+This series showed how to build a full AI-to-Oracle pipeline from the ground up:
+
+1. **[Part 1](part-1-setup.md)** — Install SQLcl via the Oracle SQL Developer VS Code extension and spin up a local Oracle HR schema with Docker
+2. **[Part 2](part-2-mcp-skills.md)** — Wire Claude Code to the SQLcl MCP server and load Oracle skills for plain-English queries
+3. **[Part 3](part-3-prompt-demos.md)** — Run real prompts against the live HR schema: schema exploration, constraint inspection, FK maps, and CSV export
+4. **[Part 4](part-4-maf-agent.md)** — Build a standalone C# agent with `Microsoft.Agents.AI` that does everything Claude Code does — deployable anywhere, no IDE required
+
+The SQLcl MCP server is the stable common layer across all four parts. Swap
+the Docker connection for your dev, staging, or prod instance and the same
+tools, skills, and agent work unchanged. No config rewrites, no code changes —
+just update the saved connection in SQLcl.
 
 The full source — Docker setup, `.mcp.json`, Claude skills, and this C#
 agent — is available at:

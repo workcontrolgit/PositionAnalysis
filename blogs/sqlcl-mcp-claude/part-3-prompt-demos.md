@@ -7,11 +7,7 @@ you type, what Claude does, and what comes back.
 All demos use the `hr_local` connection to the Docker Oracle XE database
 from Part 1.
 
-**Series:**
-- Part 1: Setup — VS Code extension, Docker HR schema
-- Part 2: MCP Server Configuration + Claude Skills
-- Part 3: Prompt Demos — Querying Oracle in Plain English ← you are here
-- Part 4: C# Console Agent with Microsoft.Extensions.AI
+**Series:** [Talk to Oracle with Claude AI](https://medium.com/scrum-and-coke/talk-to-oracle-with-claude-ai-series-preface-19b31fdb782e)
 
 ← [Part 2: MCP Server + Claude Skills](#)
 
@@ -292,19 +288,15 @@ oracle-database-info
 
 ---
 
-## Wrapping Up
+## What's Next
 
-This series showed how to:
+Parts 1–3 covered the zero-code path: wire Claude Code to Oracle and start
+querying immediately. Part 4 goes further and builds a standalone C# console
+agent you can deploy independently — no Claude Code required.
 
-1. Install SQLcl via the Oracle SQL Developer VS Code extension
-2. Spin up a local Oracle HR schema with Docker
-3. Configure Claude Code to use the SQLcl MCP server
-4. Query Oracle in plain English using Claude skills
+The agent uses `Microsoft.Agents.AI`'s `AIAgent` class, which wraps an
+`IChatClient` and handles the full tool-call loop automatically. It supports
+three AI backends switchable via config: Azure Claude, Azure OpenAI, or local
+Ollama. The same SQLcl MCP server and Oracle skills power it from underneath.
 
-The pattern works for any Oracle database — swap the Docker connection
-for your dev, staging, or prod instance and the same skills and prompts apply.
-No changes to your MCP config, no new skills to write. Just update
-`hr_local` with a saved connection pointing at your target database.
-
-The full source — Docker setup, `.mcp.json`, and all Claude skills — is
-available at: [github.com/workcontrolgit/oracle-sqlcl-ai-skills](https://github.com/workcontrolgit/oracle-sqlcl-ai-skills)
+→ [Part 4: C# Console Agent with Microsoft.Agents.AI](#)

@@ -5,11 +5,7 @@ Docker Oracle HR database. Now you'll wire Claude Code to that database using
 the SQLcl MCP server — and install the skills that let Claude query Oracle
 with plain English.
 
-**Series:**
-- Part 1: Setup — VS Code extension, Docker HR schema
-- Part 2: MCP Server Configuration + Claude Skills ← you are here
-- Part 3: Prompt Demos — Querying Oracle in Plain English
-- Part 4: Microsoft Agent Framework — C# Agent with SQLcl MCP
+**Series:** [Talk to Oracle with Claude AI](https://medium.com/scrum-and-coke/talk-to-oracle-with-claude-ai-series-preface-19b31fdb782e)
 
 ← [Part 1: Setup](#)
 
