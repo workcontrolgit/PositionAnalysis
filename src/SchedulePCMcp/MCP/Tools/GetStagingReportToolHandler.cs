@@ -19,7 +19,6 @@ public class GetStagingReportToolHandler : IMcpToolHandler
     public object InputSchema => new
     {
         type = "object",
-        required = new[] { "runId" },
         properties = new
         {
             runId = new { type = "string" }
@@ -29,10 +28,8 @@ public class GetStagingReportToolHandler : IMcpToolHandler
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         var runId = arguments.GetStringOrNull("runId");
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("runId is required", nameof(arguments));
 
-        var report = await _reportingService.GetStagingReportAsync(runId);
+        var report = await _reportingService.GetStagingReportAsync(runId ?? string.Empty);
 
         // Keep response shape aligned with get_processing_status so clients can
         // render both reports using the same table columns.
@@ -49,7 +46,6 @@ public class GetStagingReportToolHandler : IMcpToolHandler
 
         return new
         {
-            runId,
             series
         };
     }

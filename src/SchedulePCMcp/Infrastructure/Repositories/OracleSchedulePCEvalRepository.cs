@@ -29,56 +29,53 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
 
     public async Task<string> InsertAsync(EvaluationResult result)
     {
-        _logger.LogInformation("Inserting evaluation result for PD {PdNbr} in run {RunId}", result.PdNbr, result.RunId);
+        _logger.LogInformation("Inserting evaluation result for PD {PdNbr}", result.PdNbr);
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
         const string sql = @"
             INSERT INTO schedule_pc_eval 
-            (run_id, pd_nbr, occ_series, grade, status, overall_score, rating, is_candidate, 
-             justification_summary, raw_llm_response, result_json, evaluated_date, evaluated_by)
+            (pd_seq_num, pd_nbr, series, grade, status, rating, is_candidate,
+             justification_summary, scored_at, result_json, error_msg)
             VALUES 
-            (:runId, :pdNbr, :series, :grade, :status, :score, :rating, :isCandidate,
-             :justification, :rawResponse, :resultJson, SYSDATE, :evaluatedBy)
-            RETURNING eval_id INTO :evalId";
+            ((SELECT NVL(MAX(pd_seq_num), 0) + 1 FROM schedule_pc_eval),
+             :pdNbr, :series, :grade, :status, :rating, :isCandidate,
+             :justification, SYSTIMESTAMP, :resultJson, NULL)
+            RETURNING pd_seq_num INTO :newPdSeqNum";
 
         using var cmd = new OracleCommand(sql, connection)
         {
             CommandTimeout = _settings.CommandTimeout
         };
 
-        cmd.Parameters.Add(":runId", result.RunId);
         cmd.Parameters.Add(":pdNbr", result.PdNbr);
         cmd.Parameters.Add(":series", result.Series.ToString());
-        cmd.Parameters.Add(":grade", result.Grade.Value);
-        cmd.Parameters.Add(":status", (int)EvaluationStatus.Complete);
-        cmd.Parameters.Add(":score", result.OverallScore);
+        cmd.Parameters.Add(":grade", result.Grade.Value.ToString("D2"));
+        cmd.Parameters.Add(":status", "pending");
         cmd.Parameters.Add(":rating", result.Rating.ToString());
         cmd.Parameters.Add(":isCandidate", result.IsCandidate ? "Y" : "N");
         cmd.Parameters.Add(":justification", result.JustificationSummary);
-        cmd.Parameters.Add(":rawResponse", result.RawLlmResponse);
         
         var resultJson = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
         cmd.Parameters.Add(":resultJson", resultJson);
-        cmd.Parameters.Add(":evaluatedBy", result.EvaluatedBy ?? "SYSTEM");
 
-        var evalIdParam = new OracleParameter(":evalId", OracleDbType.Decimal)
+        var pdSeqParam = new OracleParameter(":newPdSeqNum", OracleDbType.Decimal)
         {
             Direction = System.Data.ParameterDirection.Output
         };
-        cmd.Parameters.Add(evalIdParam);
+        cmd.Parameters.Add(pdSeqParam);
 
         await cmd.ExecuteNonQueryAsync();
-        var evalId = evalIdParam.Value?.ToString() ?? "";
+        var newPdSeqNum = pdSeqParam.Value?.ToString() ?? "";
 
-        _logger.LogInformation("Inserted evaluation result with ID {EvalId}", evalId);
-        return evalId;
+        _logger.LogInformation("Inserted staged evaluation row with PD_SEQ_NUM {PdSeqNum}", newPdSeqNum);
+        return newPdSeqNum;
     }
 
     public async Task UpdateAsync(EvaluationResult result)
     {
-        _logger.LogInformation("Updating evaluation result for PD {PdNbr} in run {RunId}", result.PdNbr, result.RunId);
+        _logger.LogInformation("Updating evaluation result for PD {PdNbr}", result.PdNbr);
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
@@ -86,54 +83,63 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         const string sql = @"
             UPDATE schedule_pc_eval 
             SET status = :status,
-                overall_score = :score,
                 rating = :rating,
                 is_candidate = :isCandidate,
                 justification_summary = :justification,
-                raw_llm_response = :rawResponse,
                 result_json = :resultJson,
-                evaluated_date = SYSDATE,
-                evaluated_by = :evaluatedBy
-            WHERE run_id = :runId AND pd_nbr = :pdNbr";
+                scored_at = SYSTIMESTAMP,
+                error_msg = :errorMsg
+            WHERE pd_nbr = :pdNbr AND series = :series";
 
         using var cmd = new OracleCommand(sql, connection)
         {
             CommandTimeout = _settings.CommandTimeout
         };
 
-        cmd.Parameters.Add(":status", (int)EvaluationStatus.Complete);
-        cmd.Parameters.Add(":score", result.OverallScore);
+        cmd.Parameters.Add(":status", MapStatusFromResult(result));
         cmd.Parameters.Add(":rating", result.Rating.ToString());
         cmd.Parameters.Add(":isCandidate", result.IsCandidate ? "Y" : "N");
         cmd.Parameters.Add(":justification", result.JustificationSummary);
-        cmd.Parameters.Add(":rawResponse", result.RawLlmResponse);
         
         var resultJson = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
         cmd.Parameters.Add(":resultJson", resultJson);
-        cmd.Parameters.Add(":evaluatedBy", result.EvaluatedBy ?? "SYSTEM");
-        cmd.Parameters.Add(":runId", result.RunId);
+        cmd.Parameters.Add(":errorMsg", result.Rating.Equals("FAILED", StringComparison.OrdinalIgnoreCase) ? result.JustificationSummary : null);
         cmd.Parameters.Add(":pdNbr", result.PdNbr);
+        cmd.Parameters.Add(":series", result.Series.ToString());
 
         var rows = await cmd.ExecuteNonQueryAsync();
         _logger.LogInformation("Updated {RowCount} evaluation result rows", rows);
     }
 
+    public async Task<int> DeleteAllAsync()
+    {
+        _logger.LogWarning("Deleting all records from schedule_pc_eval");
+
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = "DELETE FROM schedule_pc_eval";
+
+        using var cmd = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout
+        };
+
+        var deletedRows = await cmd.ExecuteNonQueryAsync();
+        _logger.LogWarning("Deleted {RowCount} records from schedule_pc_eval", deletedRows);
+        return deletedRows;
+    }
+
     public async Task<string?> GetLatestRunIdAsync()
     {
-        _logger.LogDebug("Fetching latest run id from schedule_pc_eval");
+        _logger.LogDebug("Fetching latest staging marker from schedule_pc_eval");
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
         const string sql = @"
-            SELECT run_id
-            FROM (
-                SELECT run_id
-                FROM schedule_pc_eval
-                GROUP BY run_id
-                ORDER BY run_id DESC
-            )
-            WHERE ROWNUM = 1";
+            SELECT TO_CHAR(MAX(scored_at), 'YYYY-MM-DD-HH24MI')
+            FROM schedule_pc_eval";
 
         using var cmd = new OracleCommand(sql, connection)
         {
@@ -141,26 +147,26 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         };
 
         var result = await cmd.ExecuteScalarAsync();
-        var runId = result?.ToString();
-        _logger.LogDebug("Latest run id resolved to {RunId}", runId ?? "<none>");
-        return runId;
+        var marker = result?.ToString();
+        _logger.LogDebug("Latest staging marker resolved to {Marker}", marker ?? "<none>");
+        return marker;
     }
 
     public async Task<List<SeriesCounts>> GetSeriesCountsAsync(string runId)
     {
-        _logger.LogInformation("Fetching aggregate series counts for run {RunId}", runId);
+        _logger.LogInformation("Fetching aggregate series counts from schedule_pc_eval (run-independent)");
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
         var seriesColumn = await ResolveColumnNameAsync(connection, "SCHEDULE_PC_EVAL", "OCC_SERIES", "SERIES");
-        var statusColumn = await ResolveColumnNameAsync(connection, "SCHEDULE_PC_EVAL", "STATUS", "RATING");
+        var statusColumn = await ResolveColumnNameAsync(connection, "SCHEDULE_PC_EVAL", "STATUS");
 
         if (seriesColumn is null)
             throw new InvalidOperationException("SCHEDULE_PC_EVAL is missing both OCC_SERIES and SERIES columns.");
 
         if (statusColumn is null)
-            throw new InvalidOperationException("SCHEDULE_PC_EVAL is missing both STATUS and RATING columns.");
+            throw new InvalidOperationException("SCHEDULE_PC_EVAL is missing STATUS column.");
 
         var sql = $@"
             SELECT {seriesColumn},
@@ -169,7 +175,6 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
                    SUM(CASE WHEN UPPER(NVL({statusColumn}, '')) IN ('FAILED', 'GENERATION_FAILED') THEN 1 ELSE 0 END) AS failed_count,
                    SUM(CASE WHEN UPPER(NVL({statusColumn}, 'PENDING')) IN ('DONE', 'COMPLETE', 'COMPLETED') THEN 1 ELSE 0 END) AS complete_count
             FROM schedule_pc_eval
-            WHERE run_id = :runId
             GROUP BY {seriesColumn}
             ORDER BY {seriesColumn}";
 
@@ -177,8 +182,6 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         {
             CommandTimeout = _settings.CommandTimeout
         };
-        cmd.Parameters.Add(":runId", runId);
-
         var output = new List<SeriesCounts>();
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -195,7 +198,7 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
             output.Add(new SeriesCounts(series, staged, inProgress, complete, failed));
         }
 
-        _logger.LogInformation("Retrieved aggregate status counts for {Count} series in run {RunId}", output.Count, runId);
+        _logger.LogInformation("Retrieved aggregate status counts for {Count} series", output.Count);
         return output;
     }
 
@@ -230,22 +233,32 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
 
     public async Task<EvaluationResult?> GetByRunAndPdAsync(string runId, string pdNbr)
     {
-        _logger.LogDebug("Fetching evaluation result for run {RunId}, PD {PdNbr}", runId, pdNbr);
+        _logger.LogDebug("Fetching latest evaluation result for PD {PdNbr}", pdNbr);
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
         const string sql = @"
-                 SELECT run_id, pd_nbr, occ_series, grade, overall_score, rating, is_candidate,
-                     justification_summary, raw_llm_response, result_json, evaluated_date
+                 SELECT CAST(NULL AS VARCHAR2(30)) AS run_id,
+                        pd_nbr,
+                        series AS occ_series,
+                        TO_NUMBER(grade) AS grade,
+                        CAST(0 AS NUMBER) AS overall_score,
+                        rating,
+                        is_candidate,
+                        justification_summary,
+                        CAST(NULL AS CLOB) AS raw_llm_response,
+                        result_json,
+                        NVL(CAST(scored_at AS DATE), SYSDATE) AS evaluated_date
             FROM schedule_pc_eval 
-            WHERE run_id = :runId AND pd_nbr = :pdNbr";
+            WHERE pd_nbr = :pdNbr
+            ORDER BY scored_at DESC
+            FETCH FIRST 1 ROWS ONLY";
 
         using var cmd = new OracleCommand(sql, connection)
         {
             CommandTimeout = _settings.CommandTimeout
         };
-        cmd.Parameters.Add(":runId", runId);
         cmd.Parameters.Add(":pdNbr", pdNbr);
 
         using var reader = await cmd.ExecuteReaderAsync();
@@ -260,24 +273,30 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
 
     public async Task<List<EvaluationResult>> GetByRunAsync(string runId)
     {
-        _logger.LogInformation("Fetching all evaluation results for run {RunId}", runId);
+        _logger.LogInformation("Fetching all evaluation results (run-independent)");
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
         const string sql = @"
-                 SELECT run_id, pd_nbr, occ_series, grade, overall_score, rating, is_candidate,
-                     justification_summary, raw_llm_response, result_json, evaluated_date
+                 SELECT CAST(NULL AS VARCHAR2(30)) AS run_id,
+                        pd_nbr,
+                        series AS occ_series,
+                        TO_NUMBER(grade) AS grade,
+                        CAST(0 AS NUMBER) AS overall_score,
+                        rating,
+                        is_candidate,
+                        justification_summary,
+                        CAST(NULL AS CLOB) AS raw_llm_response,
+                        result_json,
+                        NVL(CAST(scored_at AS DATE), SYSDATE) AS evaluated_date
             FROM schedule_pc_eval 
-            WHERE run_id = :runId
             ORDER BY pd_nbr";
 
         using var cmd = new OracleCommand(sql, connection)
         {
             CommandTimeout = _settings.CommandTimeout
         };
-        cmd.Parameters.Add(":runId", runId);
-
         var results = new List<EvaluationResult>();
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -287,29 +306,37 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
                 results.Add(result);
         }
 
-        _logger.LogInformation("Retrieved {Count} evaluation results for run {RunId}", results.Count, runId);
+        _logger.LogInformation("Retrieved {Count} evaluation results", results.Count);
         return results;
     }
 
     public async Task<List<EvaluationResult>> GetByRunAndSeriesAsync(string runId, OccupationalSeries series)
     {
-        _logger.LogInformation("Fetching evaluation results for run {RunId}, series {Series}", runId, series);
+        _logger.LogInformation("Fetching evaluation results for series {Series}", series);
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
         const string sql = @"
-                 SELECT run_id, pd_nbr, occ_series, grade, overall_score, rating, is_candidate,
-                     justification_summary, raw_llm_response, result_json, evaluated_date
+                 SELECT CAST(NULL AS VARCHAR2(30)) AS run_id,
+                        pd_nbr,
+                        series AS occ_series,
+                        TO_NUMBER(grade) AS grade,
+                        CAST(0 AS NUMBER) AS overall_score,
+                        rating,
+                        is_candidate,
+                        justification_summary,
+                        CAST(NULL AS CLOB) AS raw_llm_response,
+                        result_json,
+                        NVL(CAST(scored_at AS DATE), SYSDATE) AS evaluated_date
             FROM schedule_pc_eval 
-            WHERE run_id = :runId AND occ_series = :series
+            WHERE series = :series
             ORDER BY pd_nbr";
 
         using var cmd = new OracleCommand(sql, connection)
         {
             CommandTimeout = _settings.CommandTimeout
         };
-        cmd.Parameters.Add(":runId", runId);
         cmd.Parameters.Add(":series", series.ToString());
 
         var results = new List<EvaluationResult>();
@@ -321,8 +348,7 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
                 results.Add(result);
         }
 
-        _logger.LogInformation("Retrieved {Count} evaluation results for run {RunId}, series {Series}", 
-            results.Count, runId, series);
+        _logger.LogInformation("Retrieved {Count} evaluation results for series {Series}", results.Count, series);
         return results;
     }
 
@@ -334,17 +360,26 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         await connection.OpenAsync();
 
         const string sql = @"
-                 SELECT run_id, pd_nbr, occ_series, grade, overall_score, rating, is_candidate,
-                     justification_summary, raw_llm_response, result_json, evaluated_date
+                 SELECT CAST(NULL AS VARCHAR2(30)) AS run_id,
+                        pd_nbr,
+                        series AS occ_series,
+                        TO_NUMBER(grade) AS grade,
+                        CAST(0 AS NUMBER) AS overall_score,
+                        rating,
+                        is_candidate,
+                        justification_summary,
+                        CAST(NULL AS CLOB) AS raw_llm_response,
+                        result_json,
+                        NVL(CAST(scored_at AS DATE), SYSDATE) AS evaluated_date
             FROM schedule_pc_eval 
             WHERE status = :status
-            ORDER BY evaluated_date DESC";
+            ORDER BY scored_at DESC";
 
         using var cmd = new OracleCommand(sql, connection)
         {
             CommandTimeout = _settings.CommandTimeout
         };
-        cmd.Parameters.Add(":status", (int)status);
+        cmd.Parameters.Add(":status", MapStatus(status));
 
         var results = new List<EvaluationResult>();
         using var reader = await cmd.ExecuteReaderAsync();
@@ -361,21 +396,20 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
 
     public async Task<int> GetCountByStatusAsync(string runId, EvaluationStatus status)
     {
-        _logger.LogDebug("Counting evaluation results for run {RunId} with status {Status}", runId, status);
+        _logger.LogDebug("Counting evaluation results with status {Status}", status);
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
         const string sql = @"
             SELECT COUNT(*) FROM schedule_pc_eval 
-            WHERE run_id = :runId AND status = :status";
+            WHERE status = :status";
 
         using var cmd = new OracleCommand(sql, connection)
         {
             CommandTimeout = _settings.CommandTimeout
         };
-        cmd.Parameters.Add(":runId", runId);
-        cmd.Parameters.Add(":status", (int)status);
+        cmd.Parameters.Add(":status", MapStatus(status));
 
         var result = await cmd.ExecuteScalarAsync();
         var count = result != null ? (int)(decimal)result : 0;
@@ -383,12 +417,35 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         return count;
     }
 
+    private static string MapStatus(EvaluationStatus status)
+    {
+        return status switch
+        {
+            EvaluationStatus.Staged => "PENDING",
+            EvaluationStatus.InProgress => "IN_PROGRESS",
+            EvaluationStatus.Complete => "COMPLETE",
+            EvaluationStatus.Failed => "FAILED",
+            _ => "PENDING"
+        };
+    }
+
+    private static string MapStatusFromResult(EvaluationResult result)
+    {
+        if (result.Rating.Equals("FAILED", StringComparison.OrdinalIgnoreCase))
+            return "FAILED";
+
+        if (result.Rating.Equals("PENDING", StringComparison.OrdinalIgnoreCase))
+            return "PENDING";
+
+        return "COMPLETE";
+    }
+
     private EvaluationResult? MapEvaluationResult(OracleDataReader reader)
     {
         // Preferred path: deserialize authoritative JSON payload when present.
         if (!reader.IsDBNull(9))
         {
-            var resultJson = reader.GetString(9);
+            var resultJson = reader.GetValue(9).ToString() ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(resultJson))
             {
                 var parsed = JsonSerializer.Deserialize<EvaluationResult>(resultJson);
@@ -422,10 +479,10 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
             Series = new OccupationalSeries(seriesCode),
             Grade = new Grade(grade),
             OverallScore = reader.IsDBNull(4) ? 0m : Convert.ToDecimal(reader.GetValue(4)),
-            Rating = reader.IsDBNull(5) ? "PENDING" : reader.GetString(5),
-            IsCandidate = !reader.IsDBNull(6) && string.Equals(reader.GetString(6), "Y", StringComparison.OrdinalIgnoreCase),
-            JustificationSummary = reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
-            RawLlmResponse = reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
+            Rating = reader.IsDBNull(5) ? "PENDING" : reader.GetValue(5).ToString() ?? "PENDING",
+            IsCandidate = !reader.IsDBNull(6) && string.Equals(reader.GetValue(6).ToString(), "Y", StringComparison.OrdinalIgnoreCase),
+            JustificationSummary = reader.IsDBNull(7) ? string.Empty : reader.GetValue(7).ToString() ?? string.Empty,
+            RawLlmResponse = reader.IsDBNull(8) ? string.Empty : reader.GetValue(8).ToString() ?? string.Empty,
             EvaluatedDate = reader.IsDBNull(10) ? DateTime.UtcNow : reader.GetDateTime(10),
             EvaluatedBy = "SYSTEM"
         };

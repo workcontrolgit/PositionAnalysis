@@ -283,6 +283,14 @@ class SchedulePCChatClient
         AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
     }
 
+    private async Task ClearSchedulePcEvalAsync()
+    {
+        var result = await _mcpClient.CallToolAsync("clear_schedule_pc_eval", new { });
+        var deleted = result.TryGetProperty("deletedCount", out var d) && d.TryGetInt32(out var count) ? count : 0;
+        _currentRunId = null;
+        AnsiConsole.MarkupLine($"[green]SCHEDULE_PC_EVAL cleared.[/] Deleted rows: [bold]{deleted}[/]");
+    }
+
     private async Task ShowAvailableToolsAsync()
     {
         await ShowToolsForClientAsync(_mcpClient, "SchedulePCMcp Tools");
@@ -410,6 +418,12 @@ class SchedulePCChatClient
             return true;
         }
 
+        if (IsClearTablePrompt(normalized))
+        {
+            await ClearSchedulePcEvalAsync();
+            return true;
+        }
+
         if (IsRunIdPrompt(normalized))
         {
             var runId = await ResolveRunIdFromInputAsync(userInput);
@@ -516,6 +530,14 @@ class SchedulePCChatClient
         normalized.Contains("stage pds") ||
         normalized.Contains("stage data") ||
         normalized.Contains("load for staging");
+
+    private static bool IsClearTablePrompt(string normalized) =>
+        normalized.Contains("clear schedule_pc_eval") ||
+        normalized.Contains("clear schedule pc eval") ||
+        normalized.Contains("remove all records") ||
+        normalized.Contains("delete all records") ||
+        normalized.Contains("truncate schedule_pc_eval") ||
+        normalized.Contains("reset staging table");
 
     private static bool IsProcessPrompt(string normalized) =>
         normalized.StartsWith("process") ||
@@ -720,13 +742,8 @@ class SchedulePCChatClient
         AnsiConsole.Write(new Rule($"[bold teal]{Markup.Escape(title)}[/]").RuleStyle("teal").LeftJustified());
         AnsiConsole.WriteLine();
 
-        var runId = report.TryGetProperty("runId", out var runIdElement)
-            ? runIdElement.GetString() ?? string.Empty
-            : string.Empty;
-
         var table = new Spectre.Console.Table()
             .BorderColor(Color.Teal)
-            .AddColumn(new TableColumn("[bold cyan]RUN_ID[/]").Centered())
             .AddColumn(new TableColumn("[bold cyan]SERIES[/]").Centered())
             .AddColumn(new TableColumn("[bold cyan]STAGED[/]").Centered())
             .AddColumn(new TableColumn("[bold cyan]IN_PROGRESS[/]").Centered())
@@ -744,7 +761,6 @@ class SchedulePCChatClient
                 var failed = item.TryGetProperty("failed", out var f) && f.TryGetInt32(out var failedValue) ? failedValue : 0;
 
                 table.AddRow(
-                    Markup.Escape(runId),
                     Markup.Escape(series),
                     staged.ToString(),
                     inProgress.ToString(),

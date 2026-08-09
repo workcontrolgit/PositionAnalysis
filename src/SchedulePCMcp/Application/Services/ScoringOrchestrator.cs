@@ -79,8 +79,8 @@ Be objective, precise, and focus on alignment with required qualifications and j
             // Parse the LLM response
             var evaluationResult = ParseLlmResponse(runId, pd, aiResult.Content);
 
-            // Persist the evaluation result to database
-            var evalId = await _evalRepository.InsertAsync(evaluationResult);
+            // Persist evaluation onto the staged row for this PD/series.
+            await _evalRepository.UpdateAsync(evaluationResult);
             _logger.LogInformation(
                 "Successfully scored PD {PdNbr} with rating {Rating} (score: {Score:F1})",
                 pdNbr, evaluationResult.Rating, evaluationResult.OverallScore);

@@ -25,6 +25,7 @@ public interface ISchedulePCEvalRepository
 {
     Task<string> InsertAsync(EvaluationResult result);
     Task UpdateAsync(EvaluationResult result);
+    Task<int> DeleteAllAsync();
     Task<string?> GetLatestRunIdAsync();
     Task<List<SeriesCounts>> GetSeriesCountsAsync(string runId);
     Task<EvaluationResult?> GetByRunAndPdAsync(string runId, string pdNbr);

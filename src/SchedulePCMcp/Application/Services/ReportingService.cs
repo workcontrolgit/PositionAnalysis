@@ -19,9 +19,6 @@ public class ReportingService : IReportingService
 
     public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync(string runId)
     {
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("Run ID cannot be null or empty", nameof(runId));
-
         var counts = await _evalRepository.GetSeriesCountsAsync(runId);
         var output = new Dictionary<OccupationalSeries, SeriesStatus>();
         foreach (var item in counts)
