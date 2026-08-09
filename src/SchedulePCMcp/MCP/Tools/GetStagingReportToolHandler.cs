@@ -34,10 +34,16 @@ public class GetStagingReportToolHandler : IMcpToolHandler
 
         var report = await _reportingService.GetStagingReportAsync(runId);
 
+        // Keep response shape aligned with get_processing_status so clients can
+        // render both reports using the same table columns.
         var series = report.Select(item => new
         {
             series = item.Key.Code,
             staged = item.Value.Staged,
+            inProgress = item.Value.InProgress,
+            complete = item.Value.Complete,
+            failed = item.Value.Failed,
+            percentComplete = item.Value.PercentComplete,
             total = item.Value.Total
         }).ToList();
 

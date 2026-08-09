@@ -71,6 +71,10 @@ public class Program
                 services.Configure<ExcelExportSettings>(context.Configuration.GetSection("ExcelExport"));
                 services.Configure<McpSettings>(context.Configuration.GetSection("MCP"));
 
+                // Some services require the concrete settings object, not only IOptions<T>.
+                services.AddSingleton(sp =>
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<StorageSettings>>().Value);
+
                 // Output directory configuration
                 services.AddSingleton<OutputSettings>();
 
@@ -118,6 +122,7 @@ public class Program
 
                 // MCP Tool Handlers
                 services.AddScoped<IMcpToolHandler, StagePdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, GetLatestRunToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessPdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusToolHandler>();
