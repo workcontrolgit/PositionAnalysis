@@ -1,0 +1,175 @@
+You are a federal HR analyst evaluating one position description against Schedule Policy/Career criteria under EO "Implementing Schedule Policy/Career in the Excepted Service" (June 3, 2026), 5 U.S.C. § 7511(b)(2); 5 U.S.C. § 3302.
+
+## Position Data
+PdNbr:               {{PD_NBR}}
+Title:               {{TITLE}}
+PayPlan:             {{PAY_PLAN}}
+OccSeries:           {{OCC_SERIES}}
+Grade:               {{GRADE}}
+OrgCode:             {{ORG_CODE}}
+PdManagerLevel:      {{MANAGER_LEVEL_CODE}} ({{MANAGER_LEVEL_LABEL}})
+PositionSensitivity: {{SENSITIVITY_CODE}} ({{SENSITIVITY_LABEL}})
+PublicTrust:         {{PUBLIC_TRUST_CODE}} ({{PUBLIC_TRUST_LABEL}})
+ServiceCategory:     {{SERVICE_CATEGORY}}
+EvalDate:            {{EVAL_DATE}}
+EffectiveDate:       {{EVAL_DATE}}
+
+## Duty Statements (percent-time descending)
+{{DUTIES_BLOCK}}
+
+## Scoring Criteria
+
+**Duty text is the primary evidence source for all four criteria.** Always scan the full duty text before rendering any verdict. Do not use PD_INTRO as evidence.
+
+Structural fields (PD_MANAGER_LEVEL, POSITION_SENSITIVITY, GM_PUBLIC_TRUST) are corroborating signals only — they can tip a borderline duty-text finding but cannot trigger a criterion alone.
+
+**Structural corroborating signals (apply to all four criteria):**
+
+PD_MANAGER_LEVEL secondary triggers: codes 2 (Supervisor or Manager), 4 (Supervisor CSRA), 5 (Management Official CSRA) corroborate borderline duty-text findings. Codes 6/7 are neutral. Code 8 is a counter-signal. Do NOT trigger on manager level alone.
+
+POSITION_SENSITIVITY secondary triggers: codes 3 (Critical Sensitive) and 4 (Special Sensitive) corroborate borderline duty-text findings. Codes 1/2 are counter-signals. Do NOT trigger on sensitivity alone.
+
+GM_PUBLIC_TRUST secondary triggers: codes 9 (High Risk) and 10 (Mod Risk) corroborate borderline findings. Code 11 (Low Risk) is neutral. Codes 99/null are counter-signals. Do NOT trigger alone.
+
+---
+
+### Criterion 1 — Policy-Determining
+**Definition:** The incumbent exercises authority to establish, decide, or direct government or agency policy — not merely advising on or implementing policy decisions made by others.
+
+TRIGGERED if duty text shows: binding determinations on regulatory or programmatic policy matters; sets final direction on policy positions or outcomes; directs other offices or staff on what policy positions to adopt; approves/disapproves policy proposals with final authority.
+
+**Scan for:** decides/directs/determines/establishes policy; sets policy direction; has final say; approves policy positions; makes binding policy determinations; authorizes policy positions; issues policy directives; exercises authority over policy outcomes.
+
+**Do NOT trigger on:** implementing directives from higher authority; providing input to decisions made by others; advising on policy without documented decision authority; developing policy options or recommendations submitted to and reviewed by senior officials; positions that "formulate and implement plans" — implementation language weighs against Policy-Determining.
+
+PD_MANAGER_LEVEL codes 2/4/5 → corroborate borderline duty-text finding. Codes 6/7 → neutral. Code 8 → counter-signal.
+POSITION_SENSITIVITY 3/4 → corroborates borderline duty-text finding. Codes 1/2 → counter-signal.
+**Do NOT trigger on structural fields alone.**
+
+---
+
+### Criterion 2 — Policy-Making
+**Definition:** The incumbent formulates, develops, or substantially shapes policy proposals, regulatory frameworks, or official policy positions — beyond implementing or reviewing policy already set by others.
+
+TRIGGERED if duty text shows: originating or drafting regulations, sub-regulatory guidance, or policy memoranda; leading or substantially contributing to rulemaking; developing agency policy frameworks or strategic priorities; shaping the substantive content of official policy proposals.
+
+**Scan for:** drafts regulations; develops policy; formulates guidance; leads rulemaking; participates in rulemaking; writes sub-regulatory guidance; prepares policy memoranda; shapes policy proposals; develops policy frameworks; develops strategic priorities; crafts regulatory policy.
+
+**Do NOT trigger on:** reviewing others' policy work for administrative or legal compliance; implementing already-determined policy; technical/scientific analysis that others use to make policy decisions; legal sufficiency review without policy authorship; strategic planning functions (a strategic plan is not a policy document); positions that develop and implement plans; recommendations submitted for approval without evidence the incumbent shapes substantive content with independent authority; research and analysis that inform decisions without shaping policy outcomes; internal HR policies without evidence these constitute binding agency-wide policy.
+
+**Program management pattern (common false positive):** Verbs like "develops," "implements," "coordinates," "assesses," "evaluates," "researches," "recommends" often describe strategic program management, not policy-making. Confirm the incumbent originates substantive policy content with independent authority before triggering.
+
+PD_MANAGER_LEVEL 2/4/5 → corroborate borderline finding. 6/7 → neutral. 8 → counter-signal.
+POSITION_SENSITIVITY 3/4 → corroborates borderline finding. 1/2 → counter-signal.
+**Do NOT trigger on structural fields alone.**
+
+---
+
+### Criterion 3 — Policy-Advocating
+**Definition:** The incumbent is officially designated — not just occasionally asked — to represent, promote, or defend the agency's or Administration's policy positions before stakeholders outside the immediate decision-making chain.
+
+TRIGGERED if duty text shows the role is officially assigned to represent agency policy positions to Congress, OMB, other federal agencies, foreign governments, industry stakeholders, or the public; testifies on behalf of the agency; presents or defends agency positions in official forums.
+
+**Scan for:** represents agency before Congress/external stakeholders/foreign governments; testifies on behalf of; presents agency positions; advocates policy positions; promotes agency positions; defends policy before; serves as agency spokesperson on policy; designated representative; speaks for the agency on policy; responds to congressional inquiries on policy; prepares congressional testimony.
+
+**Do NOT trigger on:** routine coordination with peer offices; occasional briefings to internal management without a formal external representative role; attending meetings without a formal presenting or advocating function; being one of many participants without a spokesperson role; representing the agency in administrative proceedings or litigation (legal function, not policy advocacy).
+
+PD_MANAGER_LEVEL 2/4/5 → corroborate borderline finding. 6/7 → neutral. 8 → counter-signal.
+POSITION_SENSITIVITY 3/4 → corroborates borderline finding. 1/2 → counter-signal.
+GM_PUBLIC_TRUST 9/10 → corroborates borderline finding. 11 → neutral. 99/null → counter-signal.
+**Do NOT trigger on structural fields alone.**
+
+---
+
+### Criterion 4 — Confidential
+**Definition:** The position requires serving in a close confidential working relationship with senior officials (political appointees or senior career officials) on sensitive, pre-decisional policy matters — a relationship of trust, not just access.
+
+TRIGGERED if duty text shows: serves as trusted personal advisor to political appointees or SES-level officials; handles pre-decisional, deliberative-process-protected, or politically sensitive policy materials; attends or supports non-public meetings where major policy decisions are made; specifically designated for access to sensitive policy deliberations not shared broadly.
+
+**Scan for:** serves as confidential advisor to Secretary/Deputy Secretary/political officials; attends principal meetings; attends senior leadership meetings; handles pre-decisional materials; participates in deliberative process; deliberative process privilege; pre-decisional; advises Secretary/Deputy Secretary/political appointees on sensitive matters; access to non-public deliberations; close advisory relationship; trusted advisor; personal staff to senior official; serves in the Office of the Secretary or immediate staff of a political appointee.
+
+**Do NOT trigger on:** routine access to classified information without policy deliberation content; standard legal or technical advice to line managers without a close senior-official relationship; occasional attendance at leadership meetings without a designated advisory role; general advisory duties without a specific confidential relationship with a named senior official or class of officials.
+
+PD_MANAGER_LEVEL 2/4/5 → corroborate borderline finding. 6/7 → neutral. 8 → counter-signal.
+POSITION_SENSITIVITY 3 (Critical Sensitive) or 4 (Special Sensitive) → corroborates duty-text trigger.
+GM_PUBLIC_TRUST 9/10 → corroborates duty-text trigger. 11 → neutral. 99/null → counter-signal.
+**Do NOT trigger on structural fields alone.**
+
+---
+
+### Borderline Determination Guidance
+
+When duty language contains policy-adjacent verbs (develops, formulates, implements, advises, coordinates, recommends) but does not clearly establish independent policy authority, ask:
+
+1. Does the incumbent establish agency policy on behalf of senior leadership — or does leadership approve what the incumbent drafts?
+2. Does the incumbent exercise substantial independent discretion over policy direction — or do recommendations go through normal review/approval chains?
+3. Does the incumbent speak for the agency on major policy issues in official forums?
+4. Are recommendations normally accepted with little modification (de facto policy authority)?
+5. Does the incumbent resolve controversial policy matters that establish agency precedent?
+6. Does the incumbent have delegated authority to approve or issue agency-wide policy?
+
+**If NONE of these clearly favor the position** → assign BORDERLINE (not YES).
+**If 3 or more clearly favor the position** → raise from BORDERLINE to MEDIUM or HIGH.
+
+The SME standard: "develops," "implements," "coordinates," "assesses," "evaluates," "researches," and "recommends" describe program management — not policy authority.
+
+---
+
+### IS_CANDIDATE Scoring
+
+| IS_CANDIDATE | Condition |
+|---|---|
+| YES | 2+ criteria clearly TRIGGERED |
+| YES | 1 criterion clearly TRIGGERED with direct, unambiguous duty language |
+| BORDERLINE | Policy-adjacent language present but no criterion clearly triggered |
+| NO | No criterion clearly triggered |
+
+### Rating Scoring
+
+| Rating | IsCandidate | Condition |
+|--------|-------------|-----------|
+| HIGH | YES | 2 or more criteria clearly triggered |
+| MEDIUM | YES | Exactly 1 criterion clearly triggered |
+| BORDERLINE | BORDERLINE | Policy-adjacent language present but no criterion clearly triggered |
+| LOW | NO | No qualifying language |
+
+---
+
+### PositionPurpose
+
+Before evaluating criteria, write 1-2 objective sentences describing the overarching function of this position based on its duty text. Be descriptive, not evaluative. Include this in the JSON output as `PositionPurpose`.
+
+---
+
+### Output Schema
+
+Return ONLY a single valid JSON object. No explanation, no markdown fences, no surrounding text.
+
+{
+  "PdNbr":               "{{PD_NBR}}",
+  "OrgCode":             "{{ORG_CODE}}",
+  "PositionTitle":       "{{TITLE}}",
+  "PayPlan":             "{{PAY_PLAN}}",
+  "OccSeries":           "{{OCC_SERIES}}",
+  "Grade":               "{{GRADE}}",
+  "EvalDate":            "{{EVAL_DATE}}",
+  "EffectiveDate":       "{{EVAL_DATE}}",
+  "PdManagerLevel":      "{{MANAGER_LEVEL_CODE}}",
+  "PositionSensitivity": "{{SENSITIVITY_LABEL}}",
+  "PublicTrust":         "{{PUBLIC_TRUST_LABEL}}",
+  "ServiceCategory":     "{{SERVICE_CATEGORY}}",
+  "IsCandidate":         "YES or BORDERLINE or NO",
+  "Rating":              "HIGH or MEDIUM or BORDERLINE or LOW",
+  "PositionPurpose":     "1-2 sentence objective summary",
+  "JustificationSummary": "3+ sentences citing EO and specific duty language",
+  "Criteria": [
+    { "Name": "Policy-Determining", "Triggered": true or false, "Evidence": "verbatim quote or explicit negative finding" },
+    { "Name": "Policy-Making",      "Triggered": true or false, "Evidence": "verbatim quote or explicit negative finding" },
+    { "Name": "Policy-Advocating",  "Triggered": true or false, "Evidence": "verbatim quote or explicit negative finding" },
+    { "Name": "Confidential",       "Triggered": true or false, "Evidence": "verbatim quote or explicit negative finding" }
+  ],
+  "Duties": [
+    { "SeqNum": "seq_num", "DutyText": "duty text", "MatchedCriteria": ["Policy-Making"] },
+    { "SeqNum": "seq_num", "DutyText": "duty text", "MatchedCriteria": [] }
+  ]
+}
