@@ -23,7 +23,8 @@ var configuration = new ConfigurationBuilder()
     .Build();
 
 Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
+    .ReadFrom.Configuration(configuration)
+    .Enrich.FromLogContext()
     .CreateLogger();
 
 try
@@ -31,8 +32,7 @@ try
     var provider = configuration["AI:Provider"] ?? "Ollama";
     IChatClient chatClient = BuildChatClient(configuration, provider);
     var modelDisplay = GetModelDisplay(configuration, provider);
-    var schedulePcMcpProjectPath = configuration["SchedulePCMcp:ProjectPath"]
-        ?? Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "SchedulePCMcp"));
+    var schedulePcMcpProjectPath = ResolveSchedulePcMcpProjectPath();
     var sqlclPath = configuration["SqlclMcp:Path"];
 
     // Display banner using Spectre.Console
@@ -152,6 +152,18 @@ static string GetModelDisplay(IConfiguration config, string provider) =>
         "azureopenai" => config["AI:AzureOpenAI:DeploymentName"] ?? "gpt-4o",
         _ => config["AI:Claude:DeploymentName"] ?? "claude-opus-4-6"
     };
+
+static string ResolveSchedulePcMcpProjectPath()
+{
+    var projectPath = Path.GetFullPath(
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "SchedulePCMcp", "SchedulePCMcp.csproj"));
+
+    if (File.Exists(projectPath))
+        return projectPath;
+
+    throw new DirectoryNotFoundException(
+        $"Could not locate conventional MCP project path: {projectPath}");
+}
 
 static async Task<IReadOnlyList<string>> ListOracleToolNamesAsync(McpClient mcpClient)
 {
@@ -797,7 +809,7 @@ public sealed class StdioMcpClient : IAsyncDisposable
     private int _requestId;
 
     public StdioMcpClient(string projectPath)
-        : this("dotnet", "run", projectPath, "SchedulePC")
+        : this("dotnet", $"run --project \"{projectPath}\"", Directory.GetCurrentDirectory(), "SchedulePC")
     {
     }
 

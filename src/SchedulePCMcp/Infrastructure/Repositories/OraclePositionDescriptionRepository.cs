@@ -222,7 +222,7 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
         var pdSeqNum = pdReader.GetInt32(0);
         var series = new OccupationalSeries(pdReader.GetString(3));
 
-        var gradeText = pdReader.IsDBNull(4) ? "0" : pdReader.GetString(4);
+        var gradeText = pdReader.IsDBNull(4) ? "1" : pdReader.GetString(4);
         if (!int.TryParse(gradeText, out var gradeValue))
             gradeValue = 1;
         var grade = new Grade(gradeValue);

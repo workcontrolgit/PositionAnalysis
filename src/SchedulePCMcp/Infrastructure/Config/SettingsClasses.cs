@@ -5,6 +5,7 @@ namespace SchedulePCMcp.Infrastructure.Config;
 /// </summary>
 public class OracleSettings
 {
+    public string ConnectionName { get; set; } = string.Empty;
     public string ConnectionString { get; set; } = string.Empty;
     public int CommandTimeout { get; set; } = 300;
 }
@@ -15,7 +16,6 @@ public class OracleSettings
 public class AiSettings
 {
     public string Type { get; set; } = "Ollama"; // Ollama or AzureOpenAI
-    public string Model { get; set; } = string.Empty;
     public OllamaSettings Ollama { get; set; } = new();
     public AzureOpenAiSettings AzureOpenAI { get; set; } = new();
 }
@@ -23,6 +23,7 @@ public class AiSettings
 public class OllamaSettings
 {
     public string Endpoint { get; set; } = "http://localhost:11434";
+    public string Model { get; set; } = string.Empty;
     public double Temperature { get; set; } = 0.7;
 }
 

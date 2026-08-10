@@ -37,7 +37,7 @@ public class OllamaAiClient : IAiClient
     {
         var ollama = aiOptions.Value.Ollama;
         _endpoint = ollama.Endpoint;
-        _model = aiOptions.Value.Model;
+        _model = ollama.Model;
         _temperature = (float)ollama.Temperature;
         _logger = logger;
         
