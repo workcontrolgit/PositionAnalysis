@@ -3,7 +3,7 @@ using SchedulePCMcp.Domain.ValueObjects;
 namespace SchedulePCMcp.Domain.Entities;
 
 /// <summary>
-/// Represents a Position Description entity from MAX_PD_VW
+/// Represents a Position Description entity from the TEMP Schedule PC source
 /// </summary>
 public class PositionDescription
 {

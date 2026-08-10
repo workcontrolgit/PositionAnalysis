@@ -9,7 +9,7 @@ namespace SchedulePCMcp.Application.Services;
 
 /// <summary>
 /// Orchestrates staging of Position Descriptions for evaluation
-/// Queries PDs from MAX_PD_VW using filtering criteria and inserts to SCHEDULE_PC_EVAL
+/// Queries PDs from the TEMP source using filtering criteria and inserts to SCHEDULE_PC_EVAL
 /// </summary>
 public class StagingOrchestrator : IStagingOrchestrator
 {
@@ -29,9 +29,9 @@ public class StagingOrchestrator : IStagingOrchestrator
 
     /// <summary>
     /// Stages Position Descriptions for evaluation.
-    /// Returns the count of successfully staged PDs.
+    /// Returns staging and excluded-dutyless-header counts.
     /// </summary>
-    public async Task<int> StageAsync(StagingFilter filter)
+    public async Task<StagingResult> StageAsync(StagingFilter filter)
     {
         var stagingStarted = DateTime.Now;
 
@@ -42,14 +42,16 @@ public class StagingOrchestrator : IStagingOrchestrator
             var deletedCount = await _evalRepository.DeleteAllAsync();
             _logger.LogInformation("Cleared {DeletedCount} existing evaluation rows", deletedCount);
 
-            var stagedCount = await _evalRepository.StageFromMaxPdAsync(filter);
+            var result = await _evalRepository.StageFromMaxPdAsync(filter);
 
             var stagingDuration = DateTime.Now - stagingStarted;
             _logger.LogInformation(
-                "Staging completed: {StagedCount} staged in {Duration:F2}s",
-                stagedCount, stagingDuration.TotalSeconds);
+                "Staging completed: {StagedCount} staged, {ExcludedWithoutDutiesCount} excluded without duties in {Duration:F2}s",
+                result.StagedCount,
+                result.ExcludedWithoutDutiesCount,
+                stagingDuration.TotalSeconds);
 
-            return stagedCount;
+            return result;
         }
         catch (OracleException ex)
         {

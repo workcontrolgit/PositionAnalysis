@@ -11,7 +11,7 @@ namespace SchedulePCMcp.Tests;
 public class StagingOrchestratorTests
 {
     [Fact]
-    public async Task StageAsync_DeletesExistingRowsThenUsesOracleBulkStaging()
+    public async Task StageAsync_DeletesExistingRowsThenUsesOracleBulkStagingAndReturnsCounts()
     {
         var evaluationRepository = new RecordingEvaluationRepository();
         var orchestrator = new StagingOrchestrator(
@@ -19,10 +19,12 @@ public class StagingOrchestratorTests
             evaluationRepository,
             NullLogger<StagingOrchestrator>.Instance);
 
-        await orchestrator.StageAsync(new StagingFilter(new Grade(13), new Grade(15), null, null));
+        var result = await orchestrator.StageAsync(new StagingFilter(new Grade(13), new Grade(15), null, null));
 
         Assert.Equal(1, evaluationRepository.DeleteAllCallCount);
         Assert.Equal(1, evaluationRepository.StageFromMaxPdCallCount);
+        Assert.Equal(new[] { "clear", "stage" }, evaluationRepository.Calls);
+        Assert.Equal(new StagingResult(4, 2), result);
     }
 
     private sealed class EmptyPositionDescriptionRepository : IPositionDescriptionRepository
@@ -38,17 +40,20 @@ public class StagingOrchestratorTests
     {
         public int DeleteAllCallCount { get; private set; }
         public int StageFromMaxPdCallCount { get; private set; }
+        public List<string> Calls { get; } = new();
 
         public Task<int> DeleteAllAsync()
         {
             DeleteAllCallCount++;
+            Calls.Add("clear");
             return Task.FromResult(0);
         }
 
-        public Task<int> StageFromMaxPdAsync(StagingFilter filter)
+        public Task<StagingResult> StageFromMaxPdAsync(StagingFilter filter)
         {
             StageFromMaxPdCallCount++;
-            return Task.FromResult(0);
+            Calls.Add("stage");
+            return Task.FromResult(new StagingResult(4, 2));
         }
 
         public Task<string> InsertAsync(EvaluationResult result) => throw new NotSupportedException();

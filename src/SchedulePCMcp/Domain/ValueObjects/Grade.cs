@@ -12,7 +12,7 @@ public class Grade : IEquatable<Grade>
         Value = value;
     }
 
-    public override string ToString() => $"GS-{Value:D2}";
+    public override string ToString() => Value.ToString("D2");
     
     public override bool Equals(object? obj) => Equals(obj as Grade);
     
