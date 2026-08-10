@@ -135,7 +135,7 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         SetCheckbox  (allSdts, nsm, 23, !result.IsCandidate);
         SetRatingCell(doc, nsm, allSdts, 24, ratingLabel, ratingBg, ratingFg);
         SetSdtText   (allSdts, nsm, 25, result.JustificationSummary);
-        SetSdtText   (allSdts, nsm, 26, $"AI Agent (claude-sonnet-4-6) / {evalDate}");
+        SetSdtText   (allSdts, nsm, 26, "AI Agent");
         SetSdtText   (allSdts, nsm, 27, "(Pending Human Review)");
 
         // Appendix A

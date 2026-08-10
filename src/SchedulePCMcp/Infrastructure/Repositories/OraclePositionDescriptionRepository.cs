@@ -205,9 +205,13 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
     private async Task<PositionDescription?> GetByPdNbrInternalAsync(OracleConnection connection, string pdNbr)
     {
         const string pdSql = @"
-            SELECT pd_seq_num, pd_nbr, pd_position_title_text, gvt_occ_series, grd_code, pd_origin_org_code, pd_org_title_text, pd_intro
-            FROM max_pd_vw 
-            WHERE pd_nbr = :pdNbr";
+            SELECT v.pd_seq_num, v.pd_nbr, v.pd_position_title_text, v.gvt_occ_series,
+                   v.grd_code, v.pd_origin_org_code, v.pd_org_title_text, v.pd_intro,
+                   v.gvt_pay_plan, v.pd_manager_level, pdpd.position_sensitivity,
+                   pdpd.gm_public_trust, pdpd.qrp_position_occupied_code
+            FROM max_pd_vw v
+            LEFT JOIN pd_position_data pdpd ON pdpd.pd_seq_num = v.pd_seq_num
+            WHERE v.pd_nbr = :pdNbr";
 
         using var pdCmd = new OracleCommand(pdSql, connection)
         {
@@ -240,6 +244,11 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
             Grade = grade,
             OrganizationCode = pdReader.IsDBNull(5) ? string.Empty : pdReader.GetString(5),
             OrganizationName = pdReader.IsDBNull(6) ? string.Empty : pdReader.GetString(6),
+            PayPlan = pdReader.IsDBNull(8) ? string.Empty : pdReader.GetValue(8).ToString() ?? string.Empty,
+            ManagerLevel = pdReader.IsDBNull(9) ? string.Empty : pdReader.GetValue(9).ToString() ?? string.Empty,
+            PositionSensitivity = pdReader.IsDBNull(10) ? string.Empty : pdReader.GetValue(10).ToString() ?? string.Empty,
+            PublicTrust = pdReader.IsDBNull(11) ? string.Empty : pdReader.GetValue(11).ToString() ?? string.Empty,
+            ServiceCategory = pdReader.IsDBNull(12) ? string.Empty : pdReader.GetValue(12).ToString() ?? string.Empty,
             IntroText = introText,
             Duties = new List<MajorDuty>(),
             CreatedDate = DateTime.UtcNow

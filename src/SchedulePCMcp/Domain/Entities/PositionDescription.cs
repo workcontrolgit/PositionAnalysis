@@ -14,6 +14,11 @@ public class PositionDescription
     public Grade Grade { get; set; } = null!;
     public string OrganizationCode { get; set; } = string.Empty;
     public string OrganizationName { get; set; } = string.Empty;
+    public string PayPlan { get; set; } = string.Empty;
+    public string ManagerLevel { get; set; } = string.Empty;
+    public string PositionSensitivity { get; set; } = string.Empty;
+    public string PublicTrust { get; set; } = string.Empty;
+    public string ServiceCategory { get; set; } = string.Empty;
     public string IntroText { get; set; } = string.Empty;
     public List<MajorDuty> Duties { get; set; } = new();
     public DateTime CreatedDate { get; set; }

@@ -44,6 +44,13 @@ try
     await using var mcpClient = new StdioMcpClient(schedulePcMcpProjectPath);
     await mcpClient.StartAsync();
 
+    Console.CancelKeyPress += (_, eventArgs) =>
+    {
+        eventArgs.Cancel = true;
+        mcpClient.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        Environment.Exit(0);
+    };
+
     McpClient? oracleMcpClient = null;
     if (!string.IsNullOrWhiteSpace(sqlclPath) && File.Exists(sqlclPath))
     {

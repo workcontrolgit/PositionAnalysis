@@ -137,7 +137,7 @@ public class AzureOpenAiClient : IAiClient
                     new { role = "system", content = systemPrompt },
                     new { role = "user", content = prompt }
                 },
-                max_tokens = 4096,
+                max_completion_tokens = 16384,
                 temperature = _temperature
             };
 
