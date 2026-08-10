@@ -150,6 +150,11 @@ Be objective, precise, and focus on alignment with required qualifications and j
                 _logger.LogError(ex, "Invalid series code {Series}", seriesCode);
                 totalFailed++;
             }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled error processing series {Series}", seriesCode);
+                totalFailed++;
+            }
         }
 
         _logger.LogInformation(
