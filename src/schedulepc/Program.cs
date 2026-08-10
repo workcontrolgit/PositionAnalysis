@@ -455,6 +455,18 @@ class SchedulePCChatClient
             return true;
         }
 
+        if (IsRetryFailedPrompt(normalized))
+        {
+            await RetryFailedAsync();
+            return true;
+        }
+
+        if (IsProcessAllPrompt(normalized))
+        {
+            await ProcessAllAsync();
+            return true;
+        }
+
         if (IsProcessPrompt(normalized))
         {
             var series = ExtractSeriesCodes(userInput);
@@ -472,18 +484,6 @@ class SchedulePCChatClient
         {
             var arguments = BuildStageArguments(userInput);
             await StageAsync(arguments);
-            return true;
-        }
-
-        if (IsRetryFailedPrompt(normalized))
-        {
-            await RetryFailedAsync();
-            return true;
-        }
-
-        if (IsProcessAllPrompt(normalized))
-        {
-            await ProcessAllAsync();
             return true;
         }
 
