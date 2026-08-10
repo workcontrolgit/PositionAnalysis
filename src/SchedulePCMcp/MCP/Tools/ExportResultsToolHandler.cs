@@ -14,15 +14,13 @@ public class ExportResultsToolHandler : IMcpToolHandler
 
     public string Name => "export_results";
 
-    public string Description => "Export evaluation results to Excel for a full run or selected series";
+    public string Description => "Export evaluation results to Excel for all or selected series";
 
     public object InputSchema => new
     {
         type = "object",
-        required = new[] { "runId" },
         properties = new
         {
-            runId = new { type = "string" },
             series = new
             {
                 type = "array",
@@ -33,25 +31,20 @@ public class ExportResultsToolHandler : IMcpToolHandler
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var runId = arguments.GetStringOrNull("runId");
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("runId is required", nameof(arguments));
-
         var series = arguments.GetStringList("series");
         if (series.Count == 0)
         {
-            await _exportOrchestrator.ExportByRunAsync(runId);
+            await _exportOrchestrator.ExportAllAsync();
         }
         else
         {
-            await _exportOrchestrator.ExportBySeriesAsync(runId, series);
+            await _exportOrchestrator.ExportBySeriesAsync(series);
         }
 
-        var status = await _exportOrchestrator.GetExportStatusAsync(runId);
+        var status = await _exportOrchestrator.GetExportStatusAsync();
 
         return new
         {
-            runId,
             total = status.Total,
             exported = status.Exported
         };

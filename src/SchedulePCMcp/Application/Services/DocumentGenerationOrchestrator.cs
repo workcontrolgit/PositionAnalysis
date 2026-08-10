@@ -38,35 +38,26 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         _documentSettings = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     }
 
-    public async Task GenerateByRunAsync(string runId)
+    public async Task GenerateAllAsync()
     {
-        ValidateRunId(runId);
+        _logger.LogInformation("Starting Word generation for all completed evaluations");
 
-        _logger.LogInformation("Starting Word generation for run {RunId}", runId);
-
-        var completedResults = (await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete))
-            .Where(r => string.Equals(r.RunId, runId, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var completedResults = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);
 
         if (completedResults.Count == 0)
         {
-            _logger.LogInformation("No completed results found for run {RunId}; nothing to generate", runId);
+            _logger.LogInformation("No completed results found; nothing to generate");
             return;
         }
 
-        var (succeeded, failed) = await GenerateInternalAsync(runId, completedResults);
+        var sessionId = $"GEN_{DateTime.Now:yyyyMMdd_HHmmss}";
+        var (succeeded, failed) = await GenerateInternalAsync(sessionId, completedResults);
 
-        _logger.LogInformation(
-            "Generated {Count} Word documents for run {RunId} ({Failed} failed)",
-            succeeded,
-            runId,
-            failed);
+        _logger.LogInformation("Generated {Count} Word documents ({Failed} failed)", succeeded, failed);
     }
 
-    public async Task GenerateBySeriesAsync(string runId, IEnumerable<string> series)
+    public async Task GenerateBySeriesAsync(IEnumerable<string> series)
     {
-        ValidateRunId(runId);
-
         if (series == null)
             throw new ArgumentNullException(nameof(series));
 
@@ -78,14 +69,11 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
 
         if (seriesList.Count == 0)
         {
-            _logger.LogInformation("No series provided for run {RunId}; nothing to generate", runId);
+            _logger.LogInformation("No series provided; nothing to generate");
             return;
         }
 
-        _logger.LogInformation(
-            "Starting Word generation for run {RunId} across {SeriesCount} series",
-            runId,
-            seriesList.Count);
+        _logger.LogInformation("Starting Word generation across {SeriesCount} series", seriesList.Count);
 
         var selectedResults = new List<EvaluationResult>();
         foreach (var seriesCode in seriesList)
@@ -93,7 +81,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
             try
             {
                 var occupationalSeries = new OccupationalSeries(seriesCode);
-                var seriesResults = await _evalRepository.GetByRunAndSeriesAsync(runId, occupationalSeries);
+                var seriesResults = await _evalRepository.GetBySeriesAsync(occupationalSeries);
                 selectedResults.AddRange(seriesResults.Where(IsCompletedResult));
             }
             catch (ArgumentException ex)
@@ -109,60 +97,40 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
 
         if (dedupedResults.Count == 0)
         {
-            _logger.LogInformation(
-                "No completed results found for run {RunId} in requested series",
-                runId);
+            _logger.LogInformation("No completed results found in requested series");
             return;
         }
 
-        var (succeeded, failed) = await GenerateInternalAsync(runId, dedupedResults);
+        var sessionId = $"GEN_{DateTime.Now:yyyyMMdd_HHmmss}";
+        var (succeeded, failed) = await GenerateInternalAsync(sessionId, dedupedResults);
 
         _logger.LogInformation(
-            "Generated {Count} Word documents for run {RunId} in selected series ({Failed} failed)",
-            succeeded,
-            runId,
-            failed);
+            "Generated {Count} Word documents in selected series ({Failed} failed)",
+            succeeded, failed);
     }
 
-    public async Task<int> GetGenerationProgressAsync(string runId)
+    public async Task<int> GetGenerationProgressAsync()
     {
-        ValidateRunId(runId);
+        var completedResults = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);
 
-        var completedResults = (await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete))
-            .Where(r => string.Equals(r.RunId, runId, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        _logger.LogInformation("Document generation progress: {Total} completed evaluations in DB", completedResults.Count);
 
-        var generatedCount = 0;
-        foreach (var result in completedResults)
-        {
-            var outputFilePath = _outputSettings.GetWordOutputPath(runId, $"{result.PdNbr}_evaluation.docx");
-            if (File.Exists(outputFilePath))
-                generatedCount++;
-        }
-
-        _logger.LogInformation(
-            "Document generation progress for run {RunId}: {Generated}/{Total}",
-            runId,
-            generatedCount,
-            completedResults.Count);
-
-        return generatedCount;
+        return completedResults.Count;
     }
 
-    private async Task<(int succeeded, int failed)> GenerateInternalAsync(string runId, IEnumerable<EvaluationResult> results)
+    private async Task<(int succeeded, int failed)> GenerateInternalAsync(string sessionId, IEnumerable<EvaluationResult> results)
     {
         var successCount = 0;
         var failureCount = 0;
 
         foreach (var result in results)
         {
-            var outputFilePath = _outputSettings.GetWordOutputPath(runId, $"{result.PdNbr}_evaluation.docx");
+            var outputFilePath = _outputSettings.GetWordOutputPath(sessionId, $"{result.PdNbr}_evaluation.docx");
 
             try
             {
                 _logger.LogDebug(
-                    "Generating Word document for run {RunId}, PD {PdNbr}, output {OutputFile}",
-                    runId,
+                    "Generating Word document for PD {PdNbr}, output {OutputFile}",
                     result.PdNbr,
                     outputFilePath);
 
@@ -175,8 +143,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
                 failureCount++;
                 _logger.LogError(
                     ex,
-                    "Template not found while generating document for run {RunId}, PD {PdNbr}. Template setting: {TemplatePath}",
-                    runId,
+                    "Template not found while generating document for PD {PdNbr}. Template setting: {TemplatePath}",
                     result.PdNbr,
                     _documentSettings.TemplateFile);
                 await MarkGenerationFailedAsync(result, ex.Message);
@@ -186,8 +153,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
                 failureCount++;
                 _logger.LogError(
                     ex,
-                    "Permission error while writing document for run {RunId}, PD {PdNbr} to {OutputPath}",
-                    runId,
+                    "Permission error while writing document for PD {PdNbr} to {OutputPath}",
                     result.PdNbr,
                     outputFilePath);
                 await MarkGenerationFailedAsync(result, ex.Message);
@@ -197,8 +163,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
                 failureCount++;
                 _logger.LogError(
                     ex,
-                    "I/O error while generating document for run {RunId}, PD {PdNbr} to {OutputPath}",
-                    runId,
+                    "I/O error while generating document for PD {PdNbr} to {OutputPath}",
                     result.PdNbr,
                     outputFilePath);
                 await MarkGenerationFailedAsync(result, ex.Message);
@@ -208,8 +173,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
                 failureCount++;
                 _logger.LogError(
                     ex,
-                    "Strategy error while generating document for run {RunId}, PD {PdNbr}",
-                    runId,
+                    "Strategy error while generating document for PD {PdNbr}",
                     result.PdNbr);
                 await MarkGenerationFailedAsync(result, ex.Message);
             }
@@ -234,8 +198,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         {
             _logger.LogError(
                 ex,
-                "Failed to persist generation failure status for run {RunId}, PD {PdNbr}",
-                result.RunId,
+                "Failed to persist generation failure status for PD {PdNbr}",
                 result.PdNbr);
         }
     }
@@ -243,11 +206,5 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
     private static bool IsCompletedResult(EvaluationResult result)
     {
         return !string.Equals(result.Rating, PendingRating, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void ValidateRunId(string runId)
-    {
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("Run ID cannot be null or empty", nameof(runId));
     }
 }

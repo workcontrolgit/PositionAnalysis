@@ -8,8 +8,7 @@ namespace SchedulePCMcp.Application.Interfaces;
 /// </summary>
 public interface IStagingOrchestrator
 {
-    Task<string> StageAsync(StagingFilter filter);
-    Task<RunMetadata?> GetRunMetadataAsync(string runId);
+    Task<int> StageAsync(StagingFilter filter);
 }
 
 /// <summary>
@@ -17,8 +16,8 @@ public interface IStagingOrchestrator
 /// </summary>
 public interface IReportingService
 {
-    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync(string runId);
-    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportAsync(string runId);
+    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync();
+    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportAsync();
 }
 
 /// <summary>
@@ -30,24 +29,21 @@ public interface IScoringOrchestrator
     /// <summary>
     /// Scores a single Position Description using LLM evaluation
     /// </summary>
-    /// <param name="runId">The evaluation run identifier</param>
     /// <param name="pdNbr">The position description number</param>
-    Task ScoreAsync(string runId, string pdNbr);
+    Task ScoreAsync(string pdNbr);
 
     /// <summary>
     /// Scores all Position Descriptions for specified occupational series
     /// </summary>
-    /// <param name="runId">The evaluation run identifier</param>
     /// <param name="series">Enumerable of occupational series codes (4-digit strings)</param>
-    Task ScoreBySeriesAsync(string runId, IEnumerable<string> series);
+    Task ScoreBySeriesAsync(IEnumerable<string> series);
 
     /// <summary>
-    /// Retrieves the evaluation result for a specific PD in a run
+    /// Retrieves the evaluation result for a specific PD
     /// </summary>
-    /// <param name="runId">The evaluation run identifier</param>
     /// <param name="pdNbr">The position description number</param>
     /// <returns>The evaluation result or null if not found</returns>
-    Task<EvaluationResult?> GetResultAsync(string runId, string pdNbr);
+    Task<EvaluationResult?> GetResultAsync(string pdNbr);
 }
 
 /// <summary>
@@ -55,7 +51,6 @@ public interface IScoringOrchestrator
 /// </summary>
 public interface IProcessingStatusService
 {
-    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusAsync(string runId);
-    Task<SeriesStatus?> GetStatusBySeriesAsync(string runId, OccupationalSeries series);
+    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusAsync();
+    Task<SeriesStatus?> GetStatusBySeriesAsync(OccupationalSeries series);
 }
-

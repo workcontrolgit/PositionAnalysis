@@ -5,7 +5,7 @@ namespace SchedulePCMcp.Application.Interfaces;
 /// </summary>
 public interface IExportOrchestrator
 {
-    Task ExportByRunAsync(string runId);
-    Task ExportBySeriesAsync(string runId, IEnumerable<string> series);
-    Task<(int Total, int Exported)> GetExportStatusAsync(string runId);
+    Task ExportAllAsync();
+    Task ExportBySeriesAsync(IEnumerable<string> series);
+    Task<(int Total, int Exported)> GetExportStatusAsync();
 }

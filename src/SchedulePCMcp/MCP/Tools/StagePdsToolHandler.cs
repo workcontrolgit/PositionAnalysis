@@ -15,7 +15,7 @@ public class StagePdsToolHandler : IMcpToolHandler
 
     public string Name => "stage_pds";
 
-    public string Description => "Stage position descriptions from Oracle into a new evaluation run";
+    public string Description => "Stage position descriptions from Oracle into SCHEDULE_PC_EVAL for evaluation";
 
     public object InputSchema => new
     {
@@ -42,11 +42,11 @@ public class StagePdsToolHandler : IMcpToolHandler
             !string.IsNullOrWhiteSpace(series) ? new OccupationalSeries(series) : null,
             orgCode);
 
-        var runId = await _stagingOrchestrator.StageAsync(filter);
+        var stagedCount = await _stagingOrchestrator.StageAsync(filter);
 
         return new
         {
-            runId,
+            stagedCount,
             status = "staged"
         };
     }

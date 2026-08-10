@@ -19,10 +19,9 @@ public class ProcessPdsBySeriesToolHandler : IMcpToolHandler
     public object InputSchema => new
     {
         type = "object",
-        required = new[] { "runId", "series" },
+        required = new[] { "series" },
         properties = new
         {
-            runId = new { type = "string" },
             series = new
             {
                 type = "array",
@@ -33,19 +32,14 @@ public class ProcessPdsBySeriesToolHandler : IMcpToolHandler
 
     public Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var runId = arguments.GetStringOrNull("runId");
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("runId is required", nameof(arguments));
-
         var series = arguments.GetStringList("series");
         if (series.Count == 0)
             throw new ArgumentException("series must include at least one item", nameof(arguments));
 
-        _ = Task.Run(() => _scoringOrchestrator.ScoreBySeriesAsync(runId, series), CancellationToken.None);
+        _ = Task.Run(() => _scoringOrchestrator.ScoreBySeriesAsync(series), CancellationToken.None);
 
         return Task.FromResult<object>(new
         {
-            runId,
             seriesCount = series.Count,
             status = "processing_started"
         });

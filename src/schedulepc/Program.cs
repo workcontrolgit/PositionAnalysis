@@ -166,7 +166,6 @@ class SchedulePCChatClient
     private readonly IChatClient _chatClient;
     private readonly StdioMcpClient _mcpClient;
     private readonly Func<Task<IReadOnlyList<string>>>? _oracleToolNamesProvider;
-    private string? _currentRunId;
 
     public SchedulePCChatClient(
         IChatClient chatClient,
@@ -236,20 +235,17 @@ class SchedulePCChatClient
     private async Task StageAsync(Dictionary<string, object?> arguments)
     {
         var result = await _mcpClient.CallToolAsync("stage_pds", arguments);
-        _currentRunId = result.GetProperty("runId").GetString();
+        var stagedCount = result.TryGetProperty("stagedCount", out var sc) && sc.TryGetInt32(out var n) ? n : 0;
 
-        AnsiConsole.MarkupLine($"[green]Staging complete.[/] Run: [bold]{Markup.Escape(_currentRunId ?? "") }[/]");
+        AnsiConsole.MarkupLine($"[green]Staging complete.[/] Staged: [bold]{stagedCount}[/] position descriptions.");
 
-        if (!string.IsNullOrWhiteSpace(_currentRunId))
-        {
-            var report = await _mcpClient.CallToolAsync("get_staging_report", new { runId = _currentRunId });
-            RenderStagingSummaryReport("Staging Report", report);
-        }
+        var report = await _mcpClient.CallToolAsync("get_staging_report", new { });
+        RenderStagingSummaryReport("Staging Report", report);
     }
 
     private async Task ShowStatusAsync()
     {
-        var status = await _mcpClient.CallToolAsync("get_processing_status", new { runId = _currentRunId });
+        var status = await _mcpClient.CallToolAsync("get_processing_status", new { });
         RenderSeriesReport("Processing Status", status);
     }
 
@@ -264,7 +260,6 @@ class SchedulePCChatClient
 
         var result = await _mcpClient.CallToolAsync("process_pds_by_series", new
         {
-            runId = _currentRunId,
             series
         });
 
@@ -273,13 +268,13 @@ class SchedulePCChatClient
 
     private async Task GenerateAsync()
     {
-        var result = await _mcpClient.CallToolAsync("generate_documents", new { runId = _currentRunId });
+        var result = await _mcpClient.CallToolAsync("generate_documents", new { });
         AnsiConsole.MarkupLine($"[green]Documents generated:[/] [bold]{result.GetProperty("generated").GetInt32()}[/]");
     }
 
     private async Task ExportAsync()
     {
-        var result = await _mcpClient.CallToolAsync("export_results", new { runId = _currentRunId });
+        var result = await _mcpClient.CallToolAsync("export_results", new { });
         AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
     }
 
@@ -287,7 +282,6 @@ class SchedulePCChatClient
     {
         var result = await _mcpClient.CallToolAsync("clear_schedule_pc_eval", new { });
         var deleted = result.TryGetProperty("deletedCount", out var d) && d.TryGetInt32(out var count) ? count : 0;
-        _currentRunId = null;
         AnsiConsole.MarkupLine($"[green]SCHEDULE_PC_EVAL cleared.[/] Deleted rows: [bold]{deleted}[/]");
     }
 
@@ -375,16 +369,11 @@ class SchedulePCChatClient
             ? "No Oracle SQLcl MCP tools discovered"
             : string.Join(", ", oracleToolNames);
 
-        var runContext = string.IsNullOrWhiteSpace(_currentRunId)
-            ? "No active run id yet."
-            : $"Active run id: {_currentRunId}";
-
         var prompt =
             "You are SchedulePC Assistant for Schedule Policy/Career evaluations. " +
             "You can answer naturally and guide the user on available MCP workflow commands. " +
             "SchedulePCMcp tools: " + scheduleToolsContext + ". " +
             "Oracle SQLcl MCP tools: " + oracleToolsContext + ". " +
-            runContext + " " +
             "User message: " + userInput;
 
         var response = await _chatClient.GetResponseAsync(prompt);
@@ -424,67 +413,33 @@ class SchedulePCChatClient
             return true;
         }
 
-        if (IsRunIdPrompt(normalized))
-        {
-            var runId = await ResolveRunIdFromInputAsync(userInput);
-            AnsiConsole.MarkupLine(string.IsNullOrWhiteSpace(runId)
-                ? "[yellow]No run id found yet.[/] Stage data first to create one."
-                : $"[green]Current run:[/] [bold]{Markup.Escape(runId)}[/]");
-            return true;
-        }
-
         if (IsStagingReportPrompt(normalized))
         {
-            var runId = await ResolveRunIdFromInputAsync(userInput, preferLatestWhenUnspecified: true);
-            if (string.IsNullOrWhiteSpace(runId))
-            {
-                AnsiConsole.MarkupLine("[yellow]No run id found.[/] Stage data first to create one, then ask for staging report.");
-                return true;
-            }
-
-            var report = await _mcpClient.CallToolAsync("get_staging_report", new { runId });
-            _currentRunId = runId;
+            var report = await _mcpClient.CallToolAsync("get_staging_report", new { });
             RenderStagingSummaryReport("Staging Report", report);
             return true;
         }
 
         if (IsProcessingStatusPrompt(normalized))
         {
-            var runId = await ResolveRunIdFromInputAsync(userInput, preferLatestWhenUnspecified: true);
-            if (string.IsNullOrWhiteSpace(runId))
-            {
-                AnsiConsole.MarkupLine("[yellow]No run id found.[/] Stage data first to create one, then ask for processing status.");
-                return true;
-            }
-
-            _currentRunId = runId;
             await ShowStatusAsync();
             return true;
         }
 
         if (IsGeneratePrompt(normalized))
         {
-            if (!TryEnsureRun())
-                return true;
-
             await GenerateAsync();
             return true;
         }
 
         if (IsExportPrompt(normalized))
         {
-            if (!TryEnsureRun())
-                return true;
-
             await ExportAsync();
             return true;
         }
 
         if (IsProcessPrompt(normalized))
         {
-            if (!TryEnsureRun())
-                return true;
-
             var series = ExtractSeriesCodes(userInput);
             if (series.Count == 0)
             {
@@ -505,11 +460,6 @@ class SchedulePCChatClient
 
         return false;
     }
-
-    private static bool IsRunIdPrompt(string normalized) =>
-        normalized.Contains("current run") ||
-        normalized.Contains("run id") ||
-        normalized is "run";
 
     private static bool IsStagingReportPrompt(string normalized) =>
         normalized.Contains("staging report") ||
@@ -555,68 +505,6 @@ class SchedulePCChatClient
         normalized.Contains("export results") ||
         normalized.Contains("download excel");
 
-    private bool TryEnsureRun()
-    {
-        if (!string.IsNullOrWhiteSpace(_currentRunId))
-            return true;
-
-        AnsiConsole.MarkupLine("[yellow]No active run yet.[/] Ask to stage data first (for example: [bold]stage series 0301[/]).");
-        return false;
-    }
-
-    private async Task<string?> ResolveRunIdFromInputAsync(string userInput, bool preferLatestWhenUnspecified = false)
-    {
-        var runFromInput = ExtractRunId(userInput);
-        if (!string.IsNullOrWhiteSpace(runFromInput))
-        {
-            _currentRunId = runFromInput;
-            return runFromInput;
-        }
-
-        if (preferLatestWhenUnspecified)
-        {
-            var latestPreferred = await TryGetLatestRunIdAsync();
-            if (!string.IsNullOrWhiteSpace(latestPreferred))
-            {
-                _currentRunId = latestPreferred;
-                return latestPreferred;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(_currentRunId))
-            return _currentRunId;
-
-        var latest = await TryGetLatestRunIdAsync();
-        if (!string.IsNullOrWhiteSpace(latest))
-        {
-            _currentRunId = latest;
-            return latest;
-        }
-
-        return null;
-    }
-
-    private async Task<string?> TryGetLatestRunIdAsync()
-    {
-
-        try
-        {
-            var latest = await _mcpClient.CallToolAsync("get_latest_run", new { });
-            if (latest.TryGetProperty("runId", out var runIdEl))
-            {
-                var latestRunId = runIdEl.GetString();
-                if (!string.IsNullOrWhiteSpace(latestRunId))
-                    return latestRunId;
-            }
-        }
-        catch
-        {
-            // If latest-run lookup fails, caller handles null with guidance.
-        }
-
-        return null;
-    }
-
     private static Dictionary<string, object?> BuildStageArguments(string userInput)
     {
         var args = new Dictionary<string, object?>();
@@ -653,12 +541,6 @@ class SchedulePCChatClient
             .ToList();
     }
 
-    private static string? ExtractRunId(string input)
-    {
-        var match = Regex.Match(input, @"\b\d{4}-\d{2}-\d{2}-\d{4}\b", RegexOptions.IgnoreCase);
-        return match.Success ? match.Value : null;
-    }
-
     private static List<string> ParseSeriesList(string input)
     {
         return input.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
@@ -691,14 +573,6 @@ class SchedulePCChatClient
         }
 
         return gradeMin >= 1 && gradeMax <= 15 && gradeMin <= gradeMax;
-    }
-
-    private Task EnsureRunAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_currentRunId))
-            throw new InvalidOperationException("No active run. Stage first with series/grade/org/stage.");
-
-        return Task.CompletedTask;
     }
 
     private static void RenderSeriesReport(string title, JsonElement report)

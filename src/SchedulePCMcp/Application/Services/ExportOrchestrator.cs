@@ -31,19 +31,16 @@ public class ExportOrchestrator : IExportOrchestrator
         _excelSettings = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     }
 
-    public async Task ExportByRunAsync(string runId)
+    public async Task ExportAllAsync()
     {
-        ValidateRunId(runId);
-
-        var results = await _evalRepository.GetByRunAsync(runId);
+        var results = await _evalRepository.GetAllAsync();
+        var sessionId = $"EXPORT_{DateTime.Now:yyyyMMdd_HHmmss}";
         var fileName = $"evaluation_results_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-
-        await ExportAsync(runId, results, fileName);
+        await ExportAsync(sessionId, results, fileName);
     }
 
-    public async Task ExportBySeriesAsync(string runId, IEnumerable<string> series)
+    public async Task ExportBySeriesAsync(IEnumerable<string> series)
     {
-        ValidateRunId(runId);
         if (series == null)
             throw new ArgumentNullException(nameof(series));
 
@@ -55,7 +52,7 @@ public class ExportOrchestrator : IExportOrchestrator
 
         if (seriesList.Count == 0)
         {
-            _logger.LogInformation("No series provided for run {RunId}; skipping export", runId);
+            _logger.LogInformation("No series provided; skipping export");
             return;
         }
 
@@ -65,7 +62,7 @@ public class ExportOrchestrator : IExportOrchestrator
             try
             {
                 var occupationalSeries = new OccupationalSeries(seriesCode);
-                var seriesResults = await _evalRepository.GetByRunAndSeriesAsync(runId, occupationalSeries);
+                var seriesResults = await _evalRepository.GetBySeriesAsync(occupationalSeries);
                 results.AddRange(seriesResults);
             }
             catch (ArgumentException ex)
@@ -79,18 +76,18 @@ public class ExportOrchestrator : IExportOrchestrator
             .Select(g => g.First())
             .ToList();
 
+        var sessionId = $"EXPORT_{DateTime.Now:yyyyMMdd_HHmmss}";
         var fileName = $"evaluation_results_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-        await ExportAsync(runId, dedupedResults, fileName);
+        await ExportAsync(sessionId, dedupedResults, fileName);
     }
 
-    public async Task<(int Total, int Exported)> GetExportStatusAsync(string runId)
+    public async Task<(int Total, int Exported)> GetExportStatusAsync()
     {
-        ValidateRunId(runId);
-
-        var allResults = await _evalRepository.GetByRunAsync(runId);
+        var allResults = await _evalRepository.GetAllAsync();
         var total = allResults.Count;
 
-        var directoryProbePath = _outputSettings.GetExcelOutputPath(runId, "_status_probe.xlsx");
+        var sessionId = $"EXPORT_{DateTime.Now:yyyyMMdd_HHmmss}";
+        var directoryProbePath = _outputSettings.GetExcelOutputPath(sessionId, "_status_probe.xlsx");
         var exportDirectory = Path.GetDirectoryName(directoryProbePath);
 
         if (string.IsNullOrWhiteSpace(exportDirectory) || !Directory.Exists(exportDirectory))
@@ -124,24 +121,24 @@ public class ExportOrchestrator : IExportOrchestrator
         }
         catch (IOException ex)
         {
-            _logger.LogError(ex, "I/O error while checking export status for run {RunId}", runId);
+            _logger.LogError(ex, "I/O error while checking export status");
             throw;
         }
         catch (UnauthorizedAccessException ex)
         {
-            _logger.LogError(ex, "Permission error while checking export status for run {RunId}", runId);
+            _logger.LogError(ex, "Permission error while checking export status");
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Excel parsing error while checking export status for run {RunId}", runId);
+            _logger.LogError(ex, "Excel parsing error while checking export status");
             throw;
         }
     }
 
-    private async Task ExportAsync(string runId, IReadOnlyCollection<EvaluationResult> results, string fileName)
+    private async Task ExportAsync(string sessionId, IReadOnlyCollection<EvaluationResult> results, string fileName)
     {
-        var outputPath = _outputSettings.GetExcelOutputPath(runId, fileName);
+        var outputPath = _outputSettings.GetExcelOutputPath(sessionId, fileName);
         var outputDirectory = Path.GetDirectoryName(outputPath);
 
         if (string.IsNullOrWhiteSpace(outputDirectory))
@@ -153,12 +150,12 @@ public class ExportOrchestrator : IExportOrchestrator
         }
         catch (IOException ex)
         {
-            _logger.LogError(ex, "I/O error while preparing Excel output directory for run {RunId}", runId);
+            _logger.LogError(ex, "I/O error while preparing Excel output directory");
             throw;
         }
         catch (UnauthorizedAccessException ex)
         {
-            _logger.LogError(ex, "Permission error while preparing Excel output directory for run {RunId}", runId);
+            _logger.LogError(ex, "Permission error while preparing Excel output directory");
             throw;
         }
 
@@ -180,25 +177,24 @@ public class ExportOrchestrator : IExportOrchestrator
         }
         catch (IOException ex)
         {
-            _logger.LogError(ex, "I/O error while writing Excel export for run {RunId} to {OutputPath}", runId, outputPath);
+            _logger.LogError(ex, "I/O error while writing Excel export to {OutputPath}", outputPath);
             throw;
         }
         catch (UnauthorizedAccessException ex)
         {
-            _logger.LogError(ex, "Permission error while writing Excel export for run {RunId} to {OutputPath}", runId, outputPath);
+            _logger.LogError(ex, "Permission error while writing Excel export to {OutputPath}", outputPath);
             throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(
                 ex,
-                "Excel generation error while exporting run {RunId} using implementation {Implementation}",
-                runId,
+                "Excel generation error using implementation {Implementation}",
                 _excelSettings.Implementation);
             throw;
         }
 
-        _logger.LogInformation("Exported {Count} evaluation results to Excel for run {RunId}", results.Count, runId);
+        _logger.LogInformation("Exported {Count} evaluation results to Excel at {OutputPath}", results.Count, outputPath);
     }
 
     private static void WriteHeaderRow(IXLWorksheet worksheet)
@@ -234,11 +230,5 @@ public class ExportOrchestrator : IExportOrchestrator
 
             row++;
         }
-    }
-
-    private static void ValidateRunId(string runId)
-    {
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("Run ID cannot be null or empty", nameof(runId));
     }
 }

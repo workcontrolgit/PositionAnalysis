@@ -15,14 +15,14 @@ public class ProcessingStatusService : IProcessingStatusService
         _reportingService = reportingService ?? throw new ArgumentNullException(nameof(reportingService));
     }
 
-    public Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusAsync(string runId)
+    public Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusAsync()
     {
-        return _reportingService.GetProcessingReportAsync(runId);
+        return _reportingService.GetProcessingReportAsync();
     }
 
-    public async Task<SeriesStatus?> GetStatusBySeriesAsync(string runId, OccupationalSeries series)
+    public async Task<SeriesStatus?> GetStatusBySeriesAsync(OccupationalSeries series)
     {
-        var all = await _reportingService.GetProcessingReportAsync(runId);
+        var all = await _reportingService.GetProcessingReportAsync();
         return all.TryGetValue(series, out var status) ? status : null;
     }
 }

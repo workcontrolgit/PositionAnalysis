@@ -19,10 +19,8 @@ public class GenerateDocumentsToolHandler : IMcpToolHandler
     public object InputSchema => new
     {
         type = "object",
-        required = new[] { "runId" },
         properties = new
         {
-            runId = new { type = "string" },
             series = new
             {
                 type = "array",
@@ -33,25 +31,20 @@ public class GenerateDocumentsToolHandler : IMcpToolHandler
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var runId = arguments.GetStringOrNull("runId");
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("runId is required", nameof(arguments));
-
         var series = arguments.GetStringList("series");
         if (series.Count == 0)
         {
-            await _documentGenerationOrchestrator.GenerateByRunAsync(runId);
+            await _documentGenerationOrchestrator.GenerateAllAsync();
         }
         else
         {
-            await _documentGenerationOrchestrator.GenerateBySeriesAsync(runId, series);
+            await _documentGenerationOrchestrator.GenerateBySeriesAsync(series);
         }
 
-        var generated = await _documentGenerationOrchestrator.GetGenerationProgressAsync(runId);
+        var generated = await _documentGenerationOrchestrator.GetGenerationProgressAsync();
 
         return new
         {
-            runId,
             generated
         };
     }

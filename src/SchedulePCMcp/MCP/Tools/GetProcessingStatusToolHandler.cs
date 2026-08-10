@@ -14,25 +14,17 @@ public class GetProcessingStatusToolHandler : IMcpToolHandler
 
     public string Name => "get_processing_status";
 
-    public string Description => "Get processing progress by series for a run";
+    public string Description => "Get processing progress grouped by occupational series";
 
     public object InputSchema => new
     {
         type = "object",
-        required = new[] { "runId" },
-        properties = new
-        {
-            runId = new { type = "string" }
-        }
+        properties = new { }
     };
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var runId = arguments.GetStringOrNull("runId");
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("runId is required", nameof(arguments));
-
-        var status = await _processingStatusService.GetStatusAsync(runId);
+        var status = await _processingStatusService.GetStatusAsync();
 
         var series = status.Select(item => new
         {
@@ -46,7 +38,6 @@ public class GetProcessingStatusToolHandler : IMcpToolHandler
 
         return new
         {
-            runId,
             series
         };
     }

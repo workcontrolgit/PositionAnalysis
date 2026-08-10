@@ -17,9 +17,9 @@ public class ReportingService : IReportingService
         _evalRepository = evalRepository ?? throw new ArgumentNullException(nameof(evalRepository));
     }
 
-    public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync(string runId)
+    public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync()
     {
-        var counts = await _evalRepository.GetSeriesCountsAsync(runId);
+        var counts = await _evalRepository.GetSeriesCountsAsync();
         var output = new Dictionary<OccupationalSeries, SeriesStatus>();
         foreach (var item in counts)
         {
@@ -30,12 +30,9 @@ public class ReportingService : IReportingService
         return output;
     }
 
-    public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportAsync(string runId)
+    public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportAsync()
     {
-        if (string.IsNullOrWhiteSpace(runId))
-            throw new ArgumentException("Run ID cannot be null or empty", nameof(runId));
-
-        var results = await _evalRepository.GetByRunAsync(runId);
+        var results = await _evalRepository.GetAllAsync();
         return BuildSeriesStatus(results, stagedOnly: false);
     }
 

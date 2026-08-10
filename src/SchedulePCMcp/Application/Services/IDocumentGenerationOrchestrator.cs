@@ -5,7 +5,7 @@ namespace SchedulePCMcp.Application.Interfaces;
 /// </summary>
 public interface IDocumentGenerationOrchestrator
 {
-    Task GenerateByRunAsync(string runId);
-    Task GenerateBySeriesAsync(string runId, IEnumerable<string> series);
-    Task<int> GetGenerationProgressAsync(string runId);
+    Task GenerateAllAsync();
+    Task GenerateBySeriesAsync(IEnumerable<string> series);
+    Task<int> GetGenerationProgressAsync();
 }
