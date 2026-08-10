@@ -278,6 +278,23 @@ class SchedulePCChatClient
         AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
     }
 
+    private async Task RetryFailedAsync()
+    {
+        var result = await _mcpClient.CallToolAsync("retry_failed_pds", new { });
+        var resetCount = result.TryGetProperty("resetCount", out var r) && r.TryGetInt32(out var n) ? n : 0;
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        AnsiConsole.MarkupLine($"[green]Retry reset:[/] [bold]{resetCount}[/] failed PD(s) reset to PENDING.");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
+    private async Task ProcessAllAsync()
+    {
+        var result = await _mcpClient.CallToolAsync("process_all_pds", new { });
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "processing_started" : "processing_started";
+        AnsiConsole.MarkupLine($"[green]{Markup.Escape(status)}[/] — scoring all staged PDs across all series.");
+    }
+
     private async Task ClearSchedulePcEvalAsync()
     {
         var result = await _mcpClient.CallToolAsync("clear_schedule_pc_eval", new { });
@@ -455,6 +472,18 @@ class SchedulePCChatClient
         {
             var arguments = BuildStageArguments(userInput);
             await StageAsync(arguments);
+            return true;
+        }
+
+        if (IsRetryFailedPrompt(normalized))
+        {
+            await RetryFailedAsync();
+            return true;
+        }
+
+        if (IsProcessAllPrompt(normalized))
+        {
+            await ProcessAllAsync();
             return true;
         }
 
@@ -652,6 +681,18 @@ class SchedulePCChatClient
         var normalized = input.Trim().ToLowerInvariant();
         return normalized is "who are you" or "who r u" or "whoami" or "who am i";
     }
+
+    private static bool IsRetryFailedPrompt(string normalized) =>
+        normalized.Contains("retry_failed_pds") ||
+        normalized.Contains("retry failed") ||
+        normalized.Contains("reset failed") ||
+        normalized.Contains("requeue failed");
+
+    private static bool IsProcessAllPrompt(string normalized) =>
+        normalized.Contains("process_all_pds") ||
+        normalized.Contains("process all pds") ||
+        normalized.Contains("process all") ||
+        normalized.Contains("score all");
 
     private static bool IsToolsListPrompt(string input)
     {
