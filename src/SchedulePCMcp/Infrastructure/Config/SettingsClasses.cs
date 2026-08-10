@@ -92,26 +92,22 @@ public class OutputSettings
 
     public OutputSettings(StorageSettings storageSettings)
     {
-        _reportsBaseDirectory = storageSettings.FileSystem.ReportsBaseDirectory;
+        var raw = storageSettings.FileSystem.ReportsBaseDirectory;
+        _reportsBaseDirectory = Path.IsPathRooted(raw)
+            ? raw
+            : Path.GetFullPath(raw, AppContext.BaseDirectory);
     }
 
-    public string GetRunDirectory(string runId)
+    public string GetExcelOutputPath(string fileName)
     {
-        var runDir = Path.Combine(_reportsBaseDirectory, runId);
-        Directory.CreateDirectory(runDir);
-        return runDir;
-    }
-
-    public string GetExcelOutputPath(string runId, string fileName)
-    {
-        var dir = Path.Combine(GetRunDirectory(runId), "Excel");
+        var dir = Path.Combine(_reportsBaseDirectory, "tracker-excel");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, fileName);
     }
 
-    public string GetWordOutputPath(string runId, string fileName)
+    public string GetWordOutputPath(string fileName)
     {
-        var dir = Path.Combine(GetRunDirectory(runId), "Word");
+        var dir = Path.Combine(_reportsBaseDirectory, "form-word");
         Directory.CreateDirectory(dir);
         return Path.Combine(dir, fileName);
     }

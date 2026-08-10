@@ -278,6 +278,40 @@ class SchedulePCChatClient
         AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
     }
 
+    private async Task RescoreBySeriesAsync(string seriesInput)
+    {
+        var series = ParseSeriesList(seriesInput);
+        if (series.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]Please include one or more series codes.[/] Example: [bold]rescore series 0110,0301[/]");
+            return;
+        }
+
+        var result = await _mcpClient.CallToolAsync("rescore_pds_by_series", new { series });
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        AnsiConsole.MarkupLine($"[green]Rescore complete:[/] series [bold]{Markup.Escape(string.Join(", ", series))}[/]");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
+    private async Task RescoreAllAsync()
+    {
+        var result = await _mcpClient.CallToolAsync("rescore_all_pds", new { });
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        AnsiConsole.MarkupLine("[green]Rescore complete:[/] all staged PDs");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
+    private async Task RescorePdAsync(string pdNbr)
+    {
+        var result = await _mcpClient.CallToolAsync("rescore_pd", new { pd_nbr = pdNbr });
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        AnsiConsole.MarkupLine($"[green]Rescore complete:[/] PD [bold]{Markup.Escape(pdNbr)}[/]");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
     private async Task RetryFailedAsync()
     {
         var result = await _mcpClient.CallToolAsync("retry_failed_pds", new { });
@@ -458,6 +492,31 @@ class SchedulePCChatClient
         if (IsRetryFailedPrompt(normalized))
         {
             await RetryFailedAsync();
+            return true;
+        }
+
+        if (IsRescoreAllPrompt(normalized))
+        {
+            await RescoreAllAsync();
+            return true;
+        }
+
+        if (IsRescoreBySeriesPrompt(normalized))
+        {
+            await RescoreBySeriesAsync(userInput);
+            return true;
+        }
+
+        if (IsRescorePdPrompt(normalized))
+        {
+            var pdNbr = ExtractPdNbr(userInput);
+            if (string.IsNullOrWhiteSpace(pdNbr))
+            {
+                AnsiConsole.MarkupLine("[yellow]Please include a PD number.[/] Example: [bold]rescore_pd 200028[/]");
+                return true;
+            }
+
+            await RescorePdAsync(pdNbr);
             return true;
         }
 
@@ -693,6 +752,32 @@ class SchedulePCChatClient
         normalized.Contains("process all pds") ||
         normalized.Contains("process all") ||
         normalized.Contains("score all");
+
+    private static bool IsRescoreAllPrompt(string normalized) =>
+        normalized.Contains("rescore_all") ||
+        normalized.Contains("rescore all") ||
+        normalized.Contains("re-score all") ||
+        normalized.Contains("force rescore all");
+
+    private static bool IsRescoreBySeriesPrompt(string normalized) =>
+        normalized.Contains("rescore_pds_by_series") ||
+        normalized.Contains("rescore series") ||
+        normalized.Contains("rescore by series") ||
+        normalized.Contains("re-score series");
+
+    private static bool IsRescorePdPrompt(string normalized) =>
+        normalized.StartsWith("rescore_pd") ||
+        normalized.StartsWith("rescore pd") ||
+        normalized.Contains("rescore pd") ||
+        normalized.Contains("rescore_pd") ||
+        normalized.Contains("force score") ||
+        normalized.Contains("re-score pd");
+
+    private static string ExtractPdNbr(string userInput)
+    {
+        var match = Regex.Match(userInput, @"\b(\d{5,})\b");
+        return match.Success ? match.Groups[1].Value : string.Empty;
+    }
 
     private static bool IsToolsListPrompt(string input)
     {

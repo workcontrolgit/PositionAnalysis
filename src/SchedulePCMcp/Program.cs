@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
-using Serilog.Core;
 using SchedulePCMcp.Application.Interfaces;
 using SchedulePCMcp.Application.Services;
 using SchedulePCMcp.Infrastructure.Config;
@@ -123,6 +122,9 @@ public class Program
                 // MCP Tool Handlers
                 services.AddScoped<IMcpToolHandler, StagePdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, RetryFailedPdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescorePdToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescorePdsBySeriesToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescoreAllPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ClearSchedulePcEvalToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessPdsBySeriesToolHandler>();

@@ -34,9 +34,8 @@ public class ExportOrchestrator : IExportOrchestrator
     public async Task ExportAllAsync()
     {
         var results = await _evalRepository.GetAllAsync();
-        var sessionId = $"EXPORT_{DateTime.Now:yyyyMMdd_HHmmss}";
         var fileName = $"evaluation_results_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-        await ExportAsync(sessionId, results, fileName);
+        await ExportAsync(results, fileName);
     }
 
     public async Task ExportBySeriesAsync(IEnumerable<string> series)
@@ -76,9 +75,8 @@ public class ExportOrchestrator : IExportOrchestrator
             .Select(g => g.First())
             .ToList();
 
-        var sessionId = $"EXPORT_{DateTime.Now:yyyyMMdd_HHmmss}";
         var fileName = $"evaluation_results_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
-        await ExportAsync(sessionId, dedupedResults, fileName);
+        await ExportAsync(dedupedResults, fileName);
     }
 
     public async Task<(int Total, int Exported)> GetExportStatusAsync()
@@ -86,8 +84,7 @@ public class ExportOrchestrator : IExportOrchestrator
         var allResults = await _evalRepository.GetAllAsync();
         var total = allResults.Count;
 
-        var sessionId = $"EXPORT_{DateTime.Now:yyyyMMdd_HHmmss}";
-        var directoryProbePath = _outputSettings.GetExcelOutputPath(sessionId, "_status_probe.xlsx");
+        var directoryProbePath = _outputSettings.GetExcelOutputPath("_status_probe.xlsx");
         var exportDirectory = Path.GetDirectoryName(directoryProbePath);
 
         if (string.IsNullOrWhiteSpace(exportDirectory) || !Directory.Exists(exportDirectory))
@@ -136,9 +133,9 @@ public class ExportOrchestrator : IExportOrchestrator
         }
     }
 
-    private async Task ExportAsync(string sessionId, IReadOnlyCollection<EvaluationResult> results, string fileName)
+    private async Task ExportAsync(IReadOnlyCollection<EvaluationResult> results, string fileName)
     {
-        var outputPath = _outputSettings.GetExcelOutputPath(sessionId, fileName);
+        var outputPath = _outputSettings.GetExcelOutputPath(fileName);
         var outputDirectory = Path.GetDirectoryName(outputPath);
 
         if (string.IsNullOrWhiteSpace(outputDirectory))

@@ -44,6 +44,16 @@ public interface IScoringOrchestrator
     Task ScoreAllAsync();
 
     /// <summary>
+    /// Forces a fresh rescore of all PDs in the specified series, regardless of current status
+    /// </summary>
+    Task RescoreBySeriesAsync(IEnumerable<string> series);
+
+    /// <summary>
+    /// Forces a fresh rescore of every staged PD across all series, regardless of current status
+    /// </summary>
+    Task RescoreAllAsync();
+
+    /// <summary>
     /// Retrieves the evaluation result for a specific PD
     /// </summary>
     /// <param name="pdNbr">The position description number</param>

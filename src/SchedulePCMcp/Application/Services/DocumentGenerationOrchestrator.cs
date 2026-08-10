@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SchedulePCMcp.Application.Interfaces;
@@ -53,8 +54,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
             return;
         }
 
-        var sessionId = $"GEN_{DateTime.Now:yyyyMMdd_HHmmss}";
-        var (succeeded, failed) = await GenerateInternalAsync(sessionId, completedResults);
+        var (succeeded, failed) = await GenerateInternalAsync(completedResults);
 
         _logger.LogInformation("Generated {Count} Word documents ({Failed} failed)", succeeded, failed);
     }
@@ -104,8 +104,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
             return;
         }
 
-        var sessionId = $"GEN_{DateTime.Now:yyyyMMdd_HHmmss}";
-        var (succeeded, failed) = await GenerateInternalAsync(sessionId, dedupedResults);
+        var (succeeded, failed) = await GenerateInternalAsync(dedupedResults);
 
         _logger.LogInformation(
             "Generated {Count} Word documents in selected series ({Failed} failed)",
@@ -121,15 +120,14 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         return completedResults.Count;
     }
 
-    private async Task<(int succeeded, int failed)> GenerateInternalAsync(string sessionId, IEnumerable<EvaluationResult> results)
+    private async Task<(int succeeded, int failed)> GenerateInternalAsync(IEnumerable<EvaluationResult> results)
     {
         var successCount = 0;
         var failureCount = 0;
 
         foreach (var result in results)
         {
-            var outputFilePath = _outputSettings.GetWordOutputPath(sessionId, $"{result.PdNbr}_evaluation.docx");
-
+            string outputFilePath = string.Empty;
             try
             {
                 var pd = await _pdRepository.GetByPdNbrAsync(result.PdNbr);
@@ -139,6 +137,8 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
                     failureCount++;
                     continue;
                 }
+
+                outputFilePath = _outputSettings.GetWordOutputPath(BuildFileName(pd));
 
                 _logger.LogDebug(
                     "Generating Word document for PD {PdNbr}, output {OutputFile}",
@@ -191,6 +191,13 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         }
 
         return (successCount, failureCount);
+    }
+
+    private static string BuildFileName(PositionDescription pd)
+    {
+        var titleSlug = Regex.Replace(pd.Title, @"[^a-zA-Z0-9 -]", "");
+        titleSlug = Regex.Replace(titleSlug, @"\s+", "-");
+        return $"PD-{pd.PdNbr}_{titleSlug}_GS-{pd.Series.Code}-{pd.Grade.Value:D2}.docx";
     }
 
     private async Task MarkGenerationFailedAsync(EvaluationResult result, string reason)

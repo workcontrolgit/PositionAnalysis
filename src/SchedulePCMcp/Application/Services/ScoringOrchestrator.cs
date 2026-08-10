@@ -162,6 +162,79 @@ Be objective and ground every finding in specific language from the duties text.
             totalScored, totalFailed);
     }
 
+    public async Task RescoreBySeriesAsync(IEnumerable<string> series)
+    {
+        if (series == null)
+            throw new ArgumentNullException(nameof(series));
+
+        var seriesList = series.ToList();
+        if (seriesList.Count == 0)
+        {
+            _logger.LogWarning("No series provided for rescore");
+            return;
+        }
+
+        _logger.LogInformation("Starting forced rescore across {SeriesCount} series", seriesList.Count);
+
+        int totalScored = 0;
+        int totalFailed = 0;
+
+        foreach (var seriesCode in seriesList)
+        {
+            if (string.IsNullOrWhiteSpace(seriesCode))
+                continue;
+
+            try
+            {
+                var occupationalSeries = new OccupationalSeries(seriesCode);
+                var allPds = await _evalRepository.GetBySeriesAsync(occupationalSeries);
+
+                _logger.LogInformation("Force rescoring {Count} PDs in series {Series}", allPds.Count, seriesCode);
+
+                foreach (var result in allPds)
+                {
+                    try
+                    {
+                        await ScoreAsync(result.PdNbr);
+                        totalScored++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to rescore PD {PdNbr} in series {Series}", result.PdNbr, seriesCode);
+                        totalFailed++;
+                    }
+                }
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogError(ex, "Invalid series code {Series}", seriesCode);
+                totalFailed++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled error rescoring series {Series}", seriesCode);
+                totalFailed++;
+            }
+        }
+
+        _logger.LogInformation("Force rescore completed: {Scored} scored, {Failed} failed", totalScored, totalFailed);
+    }
+
+    public async Task RescoreAllAsync()
+    {
+        var counts = await _evalRepository.GetSeriesCountsAsync();
+        var allSeries = counts.Select(c => c.Series).ToList();
+
+        if (allSeries.Count == 0)
+        {
+            _logger.LogWarning("RescoreAllAsync: no staged series found");
+            return;
+        }
+
+        _logger.LogInformation("RescoreAllAsync: force rescoring all {Count} staged series", allSeries.Count);
+        await RescoreBySeriesAsync(allSeries);
+    }
+
     /// <summary>
     /// Scores all PENDING Position Descriptions across every staged series
     /// </summary>
