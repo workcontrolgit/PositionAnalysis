@@ -122,6 +122,7 @@ public class Program
 
                 // MCP Tool Handlers
                 services.AddScoped<IMcpToolHandler, StagePdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, RetryFailedPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ClearSchedulePcEvalToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessPdsBySeriesToolHandler>();

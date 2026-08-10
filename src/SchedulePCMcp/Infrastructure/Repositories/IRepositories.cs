@@ -32,6 +32,7 @@ public interface ISchedulePCEvalRepository
     Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series);
     Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status);
     Task<int> GetCountByStatusAsync(EvaluationStatus status);
+    Task<int> ResetFailedAsync();
 }
 
 public sealed record SeriesCounts(string Series, int Staged, int InProgress, int Complete, int Failed);

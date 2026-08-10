@@ -387,6 +387,33 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         return count;
     }
 
+    public async Task<int> ResetFailedAsync()
+    {
+        _logger.LogInformation("Resetting failed evaluation rows back to PENDING for retry");
+
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            UPDATE schedule_pc_eval
+            SET rating = 'PENDING',
+                status = 'Staged',
+                scored_at = NULL,
+                justification_summary = NULL,
+                result_json = NULL,
+                error_msg = NULL
+            WHERE rating = 'FAILED'";
+
+        using var cmd = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout
+        };
+
+        var affected = await cmd.ExecuteNonQueryAsync();
+        _logger.LogInformation("Reset {Count} failed evaluation rows to PENDING", affected);
+        return affected;
+    }
+
     private static string MapStatus(EvaluationStatus status)
     {
         return status switch
