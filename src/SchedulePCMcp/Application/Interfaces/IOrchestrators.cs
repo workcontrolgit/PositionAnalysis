@@ -39,6 +39,11 @@ public interface IScoringOrchestrator
     Task ScoreBySeriesAsync(IEnumerable<string> series);
 
     /// <summary>
+    /// Scores all PENDING Position Descriptions across every staged series
+    /// </summary>
+    Task ScoreAllAsync();
+
+    /// <summary>
     /// Retrieves the evaluation result for a specific PD
     /// </summary>
     /// <param name="pdNbr">The position description number</param>

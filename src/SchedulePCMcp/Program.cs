@@ -126,6 +126,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, ClearSchedulePcEvalToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessPdsBySeriesToolHandler>();
+                services.AddScoped<IMcpToolHandler, ProcessAllPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusToolHandler>();
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ExportResultsToolHandler>();

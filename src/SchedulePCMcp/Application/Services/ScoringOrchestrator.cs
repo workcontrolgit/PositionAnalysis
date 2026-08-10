@@ -163,6 +163,24 @@ Be objective, precise, and focus on alignment with required qualifications and j
     }
 
     /// <summary>
+    /// Scores all PENDING Position Descriptions across every staged series
+    /// </summary>
+    public async Task ScoreAllAsync()
+    {
+        var counts = await _evalRepository.GetSeriesCountsAsync();
+        var allSeries = counts.Select(c => c.Series).ToList();
+
+        if (allSeries.Count == 0)
+        {
+            _logger.LogWarning("ScoreAllAsync: no staged series found");
+            return;
+        }
+
+        _logger.LogInformation("ScoreAllAsync: scoring all {Count} staged series", allSeries.Count);
+        await ScoreBySeriesAsync(allSeries);
+    }
+
+    /// <summary>
     /// Retrieves the evaluation result for a specific PD
     /// </summary>
     public async Task<EvaluationResult?> GetResultAsync(string pdNbr)
