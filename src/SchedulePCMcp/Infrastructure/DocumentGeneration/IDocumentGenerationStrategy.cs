@@ -8,7 +8,7 @@ namespace SchedulePCMcp.Infrastructure.DocumentGeneration;
 /// </summary>
 public interface IDocumentGenerationStrategy
 {
-    Task GenerateAsync(EvaluationResult result, string templatePath, string outputPath);
+    Task GenerateAsync(EvaluationResult result, PositionDescription pd, string outputPath);
 }
 
 /// <summary>

@@ -19,9 +19,9 @@ public class ScoringOrchestrator : IScoringOrchestrator
     private readonly IPositionDescriptionRepository _pdRepository;
     private readonly ILogger<ScoringOrchestrator> _logger;
 
-    private const string SystemPrompt = @"You are an expert HR specialist evaluating federal position descriptions against Schedule PC criteria.
-Analyze the position description and provide a structured JSON evaluation.
-Be objective, precise, and focus on alignment with required qualifications and job functions.";
+    private const string SystemPrompt = @"You are an expert federal HR specialist evaluating position descriptions against Schedule Policy/Career (Schedule PC) criteria under Executive Order 13957.
+Analyze the position description and return a structured JSON evaluation.
+Be objective and ground every finding in specific language from the duties text.";
 
     public ScoringOrchestrator(
         IAiClient aiClient,
@@ -212,7 +212,7 @@ Be objective, precise, and focus on alignment with required qualifications and j
         var dutiesSummary = string.Join("\n", pd.Duties.Select(d =>
             $"- {d.Text} ({d.PercentTimeAllotted}% of time){(d.IsCritical ? " [CRITICAL]" : "")}"));
 
-        return $@"Evaluate this federal position description:
+        return $@"Evaluate this federal position description against the four Schedule PC criteria:
 
 POSITION: {pd.Title}
 SERIES: {pd.Series}
@@ -225,28 +225,41 @@ INTRODUCTION:
 MAJOR DUTIES:
 {dutiesSummary}
 
-Provide a detailed JSON evaluation with the following structure:
+Return ONLY valid JSON in exactly this structure — no markdown fences, no additional text:
 {{
-  ""score"": <0-100 numeric score>,
+  ""score"": <0-100 numeric overall score>,
   ""rating"": ""HIGH"" | ""MEDIUM"" | ""LOW"" | ""DOES_NOT_MEET"",
-  ""justification"": ""<brief summary of overall evaluation>"",
+  ""justification"": ""<one-paragraph overall justification>"",
+  ""isCandidate"": true | false,
   ""criteria"": [
     {{
-      ""name"": ""<criterion name>"",
-      ""score"": <0-100>,
-      ""justification"": ""<explanation>""
+      ""name"": ""Policy-Determining"",
+      ""triggered"": true | false,
+      ""evidence"": ""<specific duty language supporting the finding>""
+    }},
+    {{
+      ""name"": ""Policy-Making"",
+      ""triggered"": true | false,
+      ""evidence"": ""<specific duty language>""
+    }},
+    {{
+      ""name"": ""Policy-Advocating"",
+      ""triggered"": true | false,
+      ""evidence"": ""<specific duty language>""
+    }},
+    {{
+      ""name"": ""Confidential"",
+      ""triggered"": true | false,
+      ""evidence"": ""<specific duty language>""
     }}
   ]
 }}
 
-Evaluate based on:
-1. Role clarity and specificity
-2. Qualification requirements alignment
-3. Duty distribution and criticality
-4. Career progression potential
-5. Schedule PC policy compliance
-
-Return ONLY valid JSON, no additional text.";
+Schedule PC Criterion definitions:
+- Policy-Determining: Position has authority to establish or set agency policy with significant discretion.
+- Policy-Making: Position participates substantively in developing or formulating policy proposals.
+- Policy-Advocating: Position represents the agency in advocating for policy positions to external parties.
+- Confidential: Position requires a close confidential working relationship with a Schedule PC official.";
     }
 
     private static string StripMarkdownFences(string response)
@@ -306,23 +319,32 @@ Return ONLY valid JSON, no additional text.";
             {
                 foreach (var criterion in criteriaElement.EnumerateArray())
                 {
-                    var criterionScore = new CriterionScore();
+                    var cs = new CriterionScore();
 
                     if (criterion.TryGetProperty("name", out var nameEl) && nameEl.ValueKind == JsonValueKind.String)
-                        criterionScore.CriterionName = nameEl.GetString() ?? "";
+                        cs.CriterionName = nameEl.GetString() ?? "";
 
-                    if (criterion.TryGetProperty("score", out var crScoreEl) && crScoreEl.TryGetDecimal(out var crScore))
-                        criterionScore.Score = Math.Clamp(crScore, 0, 100);
+                    if (criterion.TryGetProperty("triggered", out var triggeredEl))
+                    {
+                        if (triggeredEl.ValueKind == JsonValueKind.True)
+                            cs.Triggered = true;
+                        else if (triggeredEl.ValueKind == JsonValueKind.False)
+                            cs.Triggered = false;
+                    }
 
-                    if (criterion.TryGetProperty("justification", out var crJustEl) && crJustEl.ValueKind == JsonValueKind.String)
-                        criterionScore.Justification = crJustEl.GetString() ?? "";
+                    if (criterion.TryGetProperty("evidence", out var evidenceEl) && evidenceEl.ValueKind == JsonValueKind.String)
+                        cs.Evidence = evidenceEl.GetString() ?? "";
 
-                    evaluationResult.CriteriaScores.Add(criterionScore);
+                    evaluationResult.CriteriaScores.Add(cs);
                 }
             }
 
-            evaluationResult.IsCandidate = evaluationResult.Rating == "HIGH" ||
-                                          evaluationResult.Rating == "MEDIUM";
+            if (root.TryGetProperty("isCandidate", out var isCandEl) &&
+                (isCandEl.ValueKind == JsonValueKind.True || isCandEl.ValueKind == JsonValueKind.False))
+                evaluationResult.IsCandidate = isCandEl.GetBoolean();
+            else
+                evaluationResult.IsCandidate = evaluationResult.Rating == "HIGH" ||
+                                               evaluationResult.Rating == "MEDIUM";
 
             _logger.LogDebug("Successfully parsed LLM response: rating={Rating}, score={Score:F1}, criteria={CriteriaCount}",
                 evaluationResult.Rating, evaluationResult.OverallScore, evaluationResult.CriteriaScores.Count);

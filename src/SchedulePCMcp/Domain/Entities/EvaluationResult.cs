@@ -27,13 +27,13 @@ public class EvaluationResult
 }
 
 /// <summary>
-/// Represents a single criterion score
+/// Represents a single Schedule PC criterion evaluation
 /// </summary>
 public class CriterionScore
 {
     public string CriterionName { get; set; } = string.Empty;
-    public decimal Score { get; set; }
-    public string Justification { get; set; } = string.Empty;
+    public bool Triggered { get; set; }
+    public string Evidence { get; set; } = string.Empty;
 
-    public override string ToString() => $"{CriterionName}: {Score:F1}";
+    public override string ToString() => $"{CriterionName}: {(Triggered ? "Triggered" : "Not triggered")}";
 }

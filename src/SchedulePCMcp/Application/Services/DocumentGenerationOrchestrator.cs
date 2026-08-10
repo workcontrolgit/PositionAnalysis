@@ -19,6 +19,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
     private const string GenerationFailedRating = "GENERATION_FAILED";
 
     private readonly ISchedulePCEvalRepository _evalRepository;
+    private readonly IPositionDescriptionRepository _pdRepository;
     private readonly IDocumentGenerationStrategyFactory _documentFactory;
     private readonly OutputSettings _outputSettings;
     private readonly ILogger<DocumentGenerationOrchestrator> _logger;
@@ -26,12 +27,14 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
 
     public DocumentGenerationOrchestrator(
         ISchedulePCEvalRepository evalRepository,
+        IPositionDescriptionRepository pdRepository,
         IDocumentGenerationStrategyFactory documentFactory,
         OutputSettings outputSettings,
         ILogger<DocumentGenerationOrchestrator> logger,
         IOptions<DocumentGenerationSettings> options)
     {
         _evalRepository = evalRepository ?? throw new ArgumentNullException(nameof(evalRepository));
+        _pdRepository = pdRepository ?? throw new ArgumentNullException(nameof(pdRepository));
         _documentFactory = documentFactory ?? throw new ArgumentNullException(nameof(documentFactory));
         _outputSettings = outputSettings ?? throw new ArgumentNullException(nameof(outputSettings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -129,13 +132,21 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
 
             try
             {
+                var pd = await _pdRepository.GetByPdNbrAsync(result.PdNbr);
+                if (pd == null)
+                {
+                    _logger.LogWarning("PD {PdNbr} not found in Oracle; skipping document generation", result.PdNbr);
+                    failureCount++;
+                    continue;
+                }
+
                 _logger.LogDebug(
                     "Generating Word document for PD {PdNbr}, output {OutputFile}",
                     result.PdNbr,
                     outputFilePath);
 
                 var strategy = _documentFactory.CreateStrategy();
-                await strategy.GenerateAsync(result, string.Empty, outputFilePath);
+                await strategy.GenerateAsync(result, pd, outputFilePath);
                 successCount++;
             }
             catch (FileNotFoundException ex)
