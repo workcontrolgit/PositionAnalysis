@@ -231,10 +231,27 @@ Evaluate based on:
 Return ONLY valid JSON, no additional text.";
     }
 
+    private static string StripMarkdownFences(string response)
+    {
+        var trimmed = response.Trim();
+        // Strip ```json ... ``` or ``` ... ```
+        if (trimmed.StartsWith("```"))
+        {
+            var firstNewline = trimmed.IndexOf('\n');
+            if (firstNewline >= 0)
+                trimmed = trimmed[(firstNewline + 1)..];
+            if (trimmed.EndsWith("```"))
+                trimmed = trimmed[..^3].TrimEnd();
+        }
+        return trimmed.Trim();
+    }
+
     private EvaluationResult ParseLlmResponse(PositionDescription pd, string llmResponse)
     {
         _logger.LogDebug("Parsing LLM response for {PdNbr}: {ResponseLength} characters",
             pd.PdNbr, llmResponse.Length);
+
+        llmResponse = StripMarkdownFences(llmResponse);
 
         var evaluationResult = new EvaluationResult
         {
