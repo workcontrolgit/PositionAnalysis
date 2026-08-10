@@ -6,7 +6,7 @@ namespace SchedulePCMcp.Infrastructure.Repositories;
 
 /// <summary>
 /// Repository for Position Description entities
-/// Queries from Oracle MAX_PD_VW and PD_DUTIES
+/// Queries from Oracle TEMP_PD_SCHED_PC and TEMP_PD_SCHED_PC_DUTIES
 /// </summary>
 public interface IPositionDescriptionRepository
 {
@@ -26,7 +26,7 @@ public interface ISchedulePCEvalRepository
     Task<string> InsertAsync(EvaluationResult result);
     Task UpdateAsync(EvaluationResult result);
     Task<int> DeleteAllAsync();
-    Task<int> StageFromMaxPdAsync(StagingFilter filter);
+    Task<StagingResult> StageFromMaxPdAsync(StagingFilter filter);
     Task<List<SeriesCounts>> GetSeriesCountsAsync();
     Task<EvaluationResult?> GetByPdAsync(string pdNbr);
     Task<List<EvaluationResult>> GetAllAsync();

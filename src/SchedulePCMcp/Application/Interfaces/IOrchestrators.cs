@@ -4,11 +4,11 @@ using SchedulePCMcp.Domain.ValueObjects;
 namespace SchedulePCMcp.Application.Interfaces;
 
 /// <summary>
-/// Orchestrates staging of Position Descriptions from MAX_PD_VW into SCHEDULE_PC_EVAL
+/// Orchestrates staging of Position Descriptions from the TEMP source into SCHEDULE_PC_EVAL
 /// </summary>
 public interface IStagingOrchestrator
 {
-    Task<int> StageAsync(StagingFilter filter);
+    Task<StagingResult> StageAsync(StagingFilter filter);
 }
 
 /// <summary>

@@ -9,10 +9,13 @@ namespace SchedulePCMcp.Infrastructure.Repositories;
 
 /// <summary>
 /// Oracle implementation of PositionDescriptionRepository
-/// Queries MAX_PD_VW and PD_DUTIES tables from HR schema
+/// Queries TEMP Schedule PC header and duty tables from HR schema.
 /// </summary>
 public class OraclePositionDescriptionRepository : IPositionDescriptionRepository
 {
+    private const string EligibleDutiesExistsPredicate =
+        "EXISTS (SELECT 1 FROM temp_pd_sched_pc_duties duty WHERE duty.pd_seq_num = header.pd_seq_num AND duty.pdd_major_duties_text IS NOT NULL)";
+
     private readonly OracleSettings _settings;
     private readonly ILogger<OraclePositionDescriptionRepository> _logger;
 
@@ -26,7 +29,7 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
 
     public async Task<List<PositionDescription>> GetAllAsync()
     {
-        _logger.LogInformation("Fetching all position descriptions from MAX_PD_VW");
+        _logger.LogInformation("Fetching all position descriptions from TEMP Schedule PC sources");
         
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
@@ -59,10 +62,12 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
-        const string sql = @"
-            SELECT pd_nbr FROM max_pd_vw 
-            WHERE gvt_occ_series = :series
-            ORDER BY pd_nbr";
+        var sql = $@"
+                        SELECT header.pd_nbr
+                        FROM temp_pd_sched_pc header
+                        WHERE header.gvt_occ_series = :series
+                            AND {EligibleDutiesExistsPredicate}
+                        ORDER BY header.pd_nbr";
 
         using var cmd = new OracleCommand(sql, connection);
         cmd.CommandTimeout = _settings.CommandTimeout;
@@ -95,10 +100,12 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
-        const string sql = @"
-            SELECT pd_nbr FROM max_pd_vw 
-            WHERE TO_NUMBER(grd_code) BETWEEN :minGrade AND :maxGrade
-            ORDER BY pd_nbr";
+        var sql = $@"
+                        SELECT header.pd_nbr
+                        FROM temp_pd_sched_pc header
+                        WHERE CASE WHEN REGEXP_LIKE(TRIM(header.grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(header.grd_code)) END BETWEEN :minGrade AND :maxGrade
+                            AND {EligibleDutiesExistsPredicate}
+                        ORDER BY header.pd_nbr";
 
         using var cmd = new OracleCommand(sql, connection);
         cmd.CommandTimeout = _settings.CommandTimeout;
@@ -134,42 +141,42 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
         await connection.OpenAsync();
 
         var sql = new System.Text.StringBuilder(
-            "SELECT pd_nbr FROM max_pd_vw WHERE 1=1");
+            $"SELECT header.pd_nbr FROM temp_pd_sched_pc header WHERE {EligibleDutiesExistsPredicate}");
         var cmd = new OracleCommand { Connection = connection, CommandTimeout = _settings.CommandTimeout };
 
         if (filter.GradeMin != null || filter.GradeMax != null)
         {
             if (filter.GradeMin != null && filter.GradeMax != null)
             {
-                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(grd_code)) END BETWEEN :minGrade AND :maxGrade");
+                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(header.grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(header.grd_code)) END BETWEEN :minGrade AND :maxGrade");
                 cmd.Parameters.Add(":minGrade", filter.GradeMin.Value);
                 cmd.Parameters.Add(":maxGrade", filter.GradeMax.Value);
             }
             else if (filter.GradeMin != null)
             {
-                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(grd_code)) END >= :minGrade");
+                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(header.grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(header.grd_code)) END >= :minGrade");
                 cmd.Parameters.Add(":minGrade", filter.GradeMin.Value);
             }
             else if (filter.GradeMax != null)
             {
-                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(grd_code)) END <= :maxGrade");
+                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(header.grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(header.grd_code)) END <= :maxGrade");
                 cmd.Parameters.Add(":maxGrade", filter.GradeMax.Value);
             }
         }
 
         if (filter.Series != null)
         {
-            sql.Append(" AND gvt_occ_series = :series");
+            sql.Append(" AND header.gvt_occ_series = :series");
             cmd.Parameters.Add(":series", filter.Series.ToString());
         }
 
         if (!string.IsNullOrWhiteSpace(filter.OrganizationCode))
         {
-            sql.Append(" AND pd_origin_org_code = :orgCode");
+            sql.Append(" AND header.pd_origin_org_code = :orgCode");
             cmd.Parameters.Add(":orgCode", filter.OrganizationCode);
         }
 
-        sql.Append(" ORDER BY pd_nbr");
+        sql.Append(" ORDER BY header.pd_nbr");
         cmd.CommandText = sql.ToString();
 
         var pdNbrs = new List<string>();
@@ -191,7 +198,7 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
 
     private async Task<List<string>> GetAllPdNbrsAsync(OracleConnection connection)
     {
-        const string sql = "SELECT DISTINCT pd_nbr FROM max_pd_vw ORDER BY pd_nbr";
+        var sql = $"SELECT DISTINCT header.pd_nbr FROM temp_pd_sched_pc header WHERE {EligibleDutiesExistsPredicate} ORDER BY header.pd_nbr";
         using var cmd = new OracleCommand(sql, connection) { CommandTimeout = _settings.CommandTimeout };
 
         var pdNbrs = new List<string>();
@@ -204,14 +211,14 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
 
     private async Task<PositionDescription?> GetByPdNbrInternalAsync(OracleConnection connection, string pdNbr)
     {
-        const string pdSql = @"
-            SELECT v.pd_seq_num, v.pd_nbr, v.pd_position_title_text, v.gvt_occ_series,
-                   v.grd_code, v.pd_origin_org_code, v.pd_org_title_text, v.pd_intro,
-                   v.gvt_pay_plan, v.pd_manager_level, pdpd.position_sensitivity,
-                   pdpd.gm_public_trust, pdpd.qrp_position_occupied_code
-            FROM max_pd_vw v
-            LEFT JOIN pd_position_data pdpd ON pdpd.pd_seq_num = v.pd_seq_num
-            WHERE v.pd_nbr = :pdNbr";
+        var pdSql = $@"
+             SELECT header.pd_seq_num, header.pd_nbr, header.pd_position_title_text, header.gvt_occ_series,
+                 header.grd_code, header.pd_origin_org_code, header.org_desc, header.pd_intro,
+                 header.gvt_pay_plan, header.pd_manager_level, header.position_sensitivity,
+                 header.gm_public_trust, header.position_occupied_code
+             FROM temp_pd_sched_pc header
+             WHERE header.pd_nbr = :pdNbr
+            AND {EligibleDutiesExistsPredicate}";
 
         using var pdCmd = new OracleCommand(pdSql, connection)
         {
@@ -228,7 +235,13 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
 
         var gradeText = pdReader.IsDBNull(4) ? "1" : pdReader.GetString(4);
         if (!int.TryParse(gradeText, out var gradeValue))
+        {
+            _logger.LogWarning(
+                "Position description {PdNbr} has nonnumeric grade {GradeText}; falling back to grade 1",
+                pdNbr,
+                gradeText);
             gradeValue = 1;
+        }
         var grade = new Grade(gradeValue);
 
         var introText = pdReader.IsDBNull(7)
@@ -256,9 +269,10 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
 
         // Fetch major duties
         const string dutiesSql = @"
-            SELECT pdd_seq_num, pdd_major_duties_text, pdd_percent_time_spent, pdd_critical_duty_ind
-            FROM pd_duties
-            WHERE pd_seq_num = :pdSeqNum
+                        SELECT pdd_seq_num, pdd_major_duties_text, pdd_percent_time_spent
+                        FROM temp_pd_sched_pc_duties
+                        WHERE pd_seq_num = :pdSeqNum
+                            AND pdd_major_duties_text IS NOT NULL
             ORDER BY pdd_seq_num";
 
         using var dutiesCmd = new OracleCommand(dutiesSql, connection)
@@ -274,8 +288,8 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
             {
                 SequenceNumber = dutiesReader.GetInt32(0),
                 Text = dutiesReader.IsDBNull(1) ? string.Empty : dutiesReader.GetValue(1).ToString() ?? string.Empty,
-                PercentTimeAllotted = dutiesReader.GetDecimal(2),
-                IsCritical = dutiesReader.GetString(3) == "Y"
+                PercentTimeAllotted = dutiesReader.IsDBNull(2) ? 0m : dutiesReader.GetDecimal(2),
+                IsCritical = false
             };
             pd.Duties.Add(duty);
         }

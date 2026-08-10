@@ -41,7 +41,7 @@
   - `SeriesStatus.cs` (status tracking per series)
   
 - **Entities:**
-  - `PositionDescription.cs` + `MajorDuty` (from MAX_PD_VW)
+  - `PositionDescription.cs` + `MajorDuty` (from TEMP_PD_SCHED_PC and TEMP_PD_SCHED_PC_DUTIES)
   - `EvaluationResult.cs` + `CriterionScore` (LLM scoring results)
   - `RunMetadata.cs` (run lifecycle tracking)
 

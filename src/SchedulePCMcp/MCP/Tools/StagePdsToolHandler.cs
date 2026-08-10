@@ -38,11 +38,12 @@ public class StagePdsToolHandler : IMcpToolHandler
             !string.IsNullOrWhiteSpace(series) ? new OccupationalSeries(series) : null,
             orgCode);
 
-        var stagedCount = await _stagingOrchestrator.StageAsync(filter);
+        var result = await _stagingOrchestrator.StageAsync(filter);
 
         return new
         {
-            stagedCount,
+            stagedCount = result.StagedCount,
+            excludedWithoutDutiesCount = result.ExcludedWithoutDutiesCount,
             status = "staged"
         };
     }

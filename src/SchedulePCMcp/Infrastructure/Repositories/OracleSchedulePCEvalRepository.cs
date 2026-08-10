@@ -123,9 +123,9 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         return deletedRows;
     }
 
-    public async Task<int> StageFromMaxPdAsync(StagingFilter filter)
+    public async Task<StagingResult> StageFromMaxPdAsync(StagingFilter filter)
     {
-        _logger.LogInformation("Calling Oracle bulk staging procedure with filter: {Filter}", filter);
+        _logger.LogInformation("Calling Oracle TEMP source bulk staging procedure with filter: {Filter}", filter);
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
@@ -141,12 +141,18 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         cmd.Parameters.Add("p_org_code", OracleDbType.Varchar2, filter.OrganizationCode, System.Data.ParameterDirection.Input);
         var stagedCountParameter = cmd.Parameters.Add("p_staged_count", OracleDbType.Int32);
         stagedCountParameter.Direction = System.Data.ParameterDirection.Output;
+        var excludedCountParameter = cmd.Parameters.Add("p_excluded_count", OracleDbType.Int32);
+        excludedCountParameter.Direction = System.Data.ParameterDirection.Output;
 
         await cmd.ExecuteNonQueryAsync();
 
         var stagedCount = Convert.ToInt32(stagedCountParameter.Value);
-        _logger.LogInformation("Oracle bulk staging procedure inserted {StagedCount} rows", stagedCount);
-        return stagedCount;
+        var excludedWithoutDutiesCount = Convert.ToInt32(excludedCountParameter.Value);
+        _logger.LogInformation(
+            "Oracle TEMP source bulk staging procedure inserted {StagedCount} rows and excluded {ExcludedWithoutDutiesCount} headers without duties",
+            stagedCount,
+            excludedWithoutDutiesCount);
+        return new StagingResult(stagedCount, excludedWithoutDutiesCount);
     }
 
     public async Task<List<SeriesCounts>> GetSeriesCountsAsync()

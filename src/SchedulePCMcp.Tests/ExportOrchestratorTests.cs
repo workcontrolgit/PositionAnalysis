@@ -88,7 +88,7 @@ public class ExportOrchestratorTests
         public Task<string> InsertAsync(EvaluationResult evaluationResult) => throw new NotSupportedException();
         public Task UpdateAsync(EvaluationResult evaluationResult) => throw new NotSupportedException();
         public Task<int> DeleteAllAsync() => throw new NotSupportedException();
-        public Task<int> StageFromMaxPdAsync(StagingFilter filter) => throw new NotSupportedException();
+        public Task<StagingResult> StageFromMaxPdAsync(StagingFilter filter) => throw new NotSupportedException();
         public Task<List<SeriesCounts>> GetSeriesCountsAsync() => throw new NotSupportedException();
         public Task<EvaluationResult?> GetByPdAsync(string pdNbr) => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series) => throw new NotSupportedException();
