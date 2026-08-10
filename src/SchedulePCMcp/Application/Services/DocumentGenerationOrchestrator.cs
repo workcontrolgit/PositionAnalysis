@@ -205,6 +205,8 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
 
     private static bool IsCompletedResult(EvaluationResult result)
     {
-        return !string.Equals(result.Rating, PendingRating, StringComparison.OrdinalIgnoreCase);
+        return !string.Equals(result.Rating, PendingRating, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(result.Rating, "FAILED", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(result.Rating, GenerationFailedRating, StringComparison.OrdinalIgnoreCase);
     }
 }
