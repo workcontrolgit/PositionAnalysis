@@ -141,18 +141,18 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
         {
             if (filter.GradeMin != null && filter.GradeMax != null)
             {
-                sql.Append(" AND TO_NUMBER(grd_code) BETWEEN :minGrade AND :maxGrade");
+                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(grd_code)) END BETWEEN :minGrade AND :maxGrade");
                 cmd.Parameters.Add(":minGrade", filter.GradeMin.Value);
                 cmd.Parameters.Add(":maxGrade", filter.GradeMax.Value);
             }
             else if (filter.GradeMin != null)
             {
-                sql.Append(" AND TO_NUMBER(grd_code) >= :minGrade");
+                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(grd_code)) END >= :minGrade");
                 cmd.Parameters.Add(":minGrade", filter.GradeMin.Value);
             }
             else if (filter.GradeMax != null)
             {
-                sql.Append(" AND TO_NUMBER(grd_code) <= :maxGrade");
+                sql.Append(" AND CASE WHEN REGEXP_LIKE(TRIM(grd_code), '^[[:digit:]]+$') THEN TO_NUMBER(TRIM(grd_code)) END <= :maxGrade");
                 cmd.Parameters.Add(":maxGrade", filter.GradeMax.Value);
             }
         }
@@ -233,6 +233,7 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
 
         var pd = new PositionDescription
         {
+            PdSeqNum = pdSeqNum,
             PdNbr = pdReader.GetString(1),
             Title = pdReader.IsDBNull(2) ? string.Empty : pdReader.GetString(2),
             Series = series,

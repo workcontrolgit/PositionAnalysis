@@ -26,6 +26,7 @@ public interface ISchedulePCEvalRepository
     Task<string> InsertAsync(EvaluationResult result);
     Task UpdateAsync(EvaluationResult result);
     Task<int> DeleteAllAsync();
+    Task<int> StageFromMaxPdAsync(StagingFilter filter);
     Task<List<SeriesCounts>> GetSeriesCountsAsync();
     Task<EvaluationResult?> GetByPdAsync(string pdNbr);
     Task<List<EvaluationResult>> GetAllAsync();

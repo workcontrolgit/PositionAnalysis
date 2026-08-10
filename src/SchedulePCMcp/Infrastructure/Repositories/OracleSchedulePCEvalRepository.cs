@@ -39,16 +39,15 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
             (pd_seq_num, pd_nbr, series, grade, status, rating, is_candidate,
              justification_summary, scored_at, result_json, error_msg)
             VALUES
-            ((SELECT NVL(MAX(pd_seq_num), 0) + 1 FROM schedule_pc_eval),
-             :pdNbr, :series, :grade, :status, :rating, :isCandidate,
-             :justification, SYSTIMESTAMP, :resultJson, NULL)
-            RETURNING pd_seq_num INTO :newPdSeqNum";
+            (:pdSeqNum, :pdNbr, :series, :grade, :status, :rating, :isCandidate,
+             :justification, SYSTIMESTAMP, :resultJson, NULL)";
 
         using var cmd = new OracleCommand(sql, connection)
         {
             CommandTimeout = _settings.CommandTimeout
         };
 
+        cmd.Parameters.Add(":pdSeqNum", result.PdSeqNum);
         cmd.Parameters.Add(":pdNbr", result.PdNbr);
         cmd.Parameters.Add(":series", result.Series.ToString());
         cmd.Parameters.Add(":grade", result.Grade.Value.ToString("D2"));
@@ -60,14 +59,8 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         var resultJson = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
         cmd.Parameters.Add(":resultJson", resultJson);
 
-        var pdSeqParam = new OracleParameter(":newPdSeqNum", OracleDbType.Decimal)
-        {
-            Direction = System.Data.ParameterDirection.Output
-        };
-        cmd.Parameters.Add(pdSeqParam);
-
         await cmd.ExecuteNonQueryAsync();
-        var newPdSeqNum = pdSeqParam.Value?.ToString() ?? "";
+        var newPdSeqNum = result.PdSeqNum.ToString();
 
         _logger.LogInformation("Inserted staged evaluation row with PD_SEQ_NUM {PdSeqNum}", newPdSeqNum);
         return newPdSeqNum;
@@ -130,6 +123,32 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         return deletedRows;
     }
 
+    public async Task<int> StageFromMaxPdAsync(StagingFilter filter)
+    {
+        _logger.LogInformation("Calling Oracle bulk staging procedure with filter: {Filter}", filter);
+
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        using var cmd = new OracleCommand("stage_schedule_pc_eval", connection)
+        {
+            CommandType = System.Data.CommandType.StoredProcedure,
+            CommandTimeout = _settings.CommandTimeout,
+            BindByName = true
+        };
+
+        cmd.Parameters.Add("p_series", OracleDbType.Varchar2, filter.Series?.ToString(), System.Data.ParameterDirection.Input);
+        cmd.Parameters.Add("p_org_code", OracleDbType.Varchar2, filter.OrganizationCode, System.Data.ParameterDirection.Input);
+        var stagedCountParameter = cmd.Parameters.Add("p_staged_count", OracleDbType.Int32);
+        stagedCountParameter.Direction = System.Data.ParameterDirection.Output;
+
+        await cmd.ExecuteNonQueryAsync();
+
+        var stagedCount = Convert.ToInt32(stagedCountParameter.Value);
+        _logger.LogInformation("Oracle bulk staging procedure inserted {StagedCount} rows", stagedCount);
+        return stagedCount;
+    }
+
     public async Task<List<SeriesCounts>> GetSeriesCountsAsync()
     {
         _logger.LogInformation("Fetching aggregate series counts from schedule_pc_eval");
@@ -165,7 +184,7 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         while (await reader.ReadAsync())
         {
             var series = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
-            if (string.IsNullOrWhiteSpace(series) || series.Length != 4)
+            if (string.IsNullOrWhiteSpace(series) || series.Length != 5)
                 continue;
 
             var staged = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1));
@@ -458,7 +477,7 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         var pdNbr = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
         var seriesCode = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
 
-        if (string.IsNullOrWhiteSpace(seriesCode) || seriesCode.Length != 4)
+        if (string.IsNullOrWhiteSpace(seriesCode) || seriesCode.Length != 5)
         {
             _logger.LogWarning(
                 "Skipping malformed evaluation row for PD {PdNbr}: invalid series '{SeriesCode}'",

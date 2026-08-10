@@ -39,56 +39,15 @@ public class StagingOrchestrator : IStagingOrchestrator
         {
             _logger.LogInformation("Starting staging with filter: {Filter}", filter);
 
-            var positionDescriptions = await _pdRepository.GetByFilterAsync(filter);
-            _logger.LogInformation("Retrieved {Count} position descriptions for staging", positionDescriptions.Count);
+            var deletedCount = await _evalRepository.DeleteAllAsync();
+            _logger.LogInformation("Cleared {DeletedCount} existing evaluation rows", deletedCount);
 
-            if (positionDescriptions.Count == 0)
-            {
-                _logger.LogWarning("No position descriptions found matching filter {Filter}", filter);
-                return 0;
-            }
-
-            var stagedCount = 0;
-            var failedCount = 0;
-
-            foreach (var pd in positionDescriptions)
-            {
-                try
-                {
-                    var evaluationResult = new EvaluationResult
-                    {
-                        PdNbr = pd.PdNbr,
-                        Series = pd.Series,
-                        Grade = pd.Grade,
-                        OverallScore = 0m,
-                        Rating = "PENDING",
-                        IsCandidate = false,
-                        JustificationSummary = "Staged for evaluation",
-                        RawLlmResponse = string.Empty,
-                        EvaluatedDate = DateTime.Now,
-                        EvaluatedBy = "SYSTEM"
-                    };
-
-                    var evalId = await _evalRepository.InsertAsync(evaluationResult);
-                    _logger.LogDebug("Staged PD {PdNbr} with eval ID {EvalId}", pd.PdNbr, evalId);
-                    stagedCount++;
-                }
-                catch (OracleException ex) when (ex.Number == 1 || ex.Message.Contains("UNIQUE"))
-                {
-                    _logger.LogWarning("PD {PdNbr} already exists in staging table", pd.PdNbr);
-                    failedCount++;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to stage PD {PdNbr}", pd.PdNbr);
-                    failedCount++;
-                }
-            }
+            var stagedCount = await _evalRepository.StageFromMaxPdAsync(filter);
 
             var stagingDuration = DateTime.Now - stagingStarted;
             _logger.LogInformation(
-                "Staging completed: {StagedCount} staged, {FailedCount} failed in {Duration:F2}s",
-                stagedCount, failedCount, stagingDuration.TotalSeconds);
+                "Staging completed: {StagedCount} staged in {Duration:F2}s",
+                stagedCount, stagingDuration.TotalSeconds);
 
             return stagedCount;
         }

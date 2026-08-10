@@ -1,7 +1,7 @@
 namespace SchedulePCMcp.Domain.ValueObjects;
 
 /// <summary>
-/// Value object representing a 4-digit occupational series code (e.g., 0110)
+/// Value object representing a 5-digit occupational series code (e.g., 00110)
 /// </summary>
 public class OccupationalSeries : IEquatable<OccupationalSeries>
 {
@@ -11,9 +11,10 @@ public class OccupationalSeries : IEquatable<OccupationalSeries>
     {
         if (string.IsNullOrWhiteSpace(code))
             throw new ArgumentException("Series code cannot be empty", nameof(code));
-        
-        if (!System.Text.RegularExpressions.Regex.IsMatch(code, @"^\d{4}$"))
-            throw new ArgumentException($"Series code must be 4 digits, got '{code}'", nameof(code));
+
+        code = code.Trim();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(code, @"^\d{5}$"))
+            throw new ArgumentException($"Series code must be 5 digits, got '{code}'", nameof(code));
 
         Code = code;
     }

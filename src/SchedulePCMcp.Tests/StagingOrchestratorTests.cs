@@ -1,0 +1,64 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using SchedulePCMcp.Application.Services;
+using SchedulePCMcp.Domain.Entities;
+using SchedulePCMcp.Domain.Enums;
+using SchedulePCMcp.Domain.ValueObjects;
+using SchedulePCMcp.Infrastructure.Repositories;
+using Xunit;
+
+namespace SchedulePCMcp.Tests;
+
+public class StagingOrchestratorTests
+{
+    [Fact]
+    public async Task StageAsync_DeletesExistingRowsThenUsesOracleBulkStaging()
+    {
+        var evaluationRepository = new RecordingEvaluationRepository();
+        var orchestrator = new StagingOrchestrator(
+            new EmptyPositionDescriptionRepository(),
+            evaluationRepository,
+            NullLogger<StagingOrchestrator>.Instance);
+
+        await orchestrator.StageAsync(new StagingFilter(new Grade(13), new Grade(15), null, null));
+
+        Assert.Equal(1, evaluationRepository.DeleteAllCallCount);
+        Assert.Equal(1, evaluationRepository.StageFromMaxPdCallCount);
+    }
+
+    private sealed class EmptyPositionDescriptionRepository : IPositionDescriptionRepository
+    {
+        public Task<List<PositionDescription>> GetAllAsync() => Task.FromResult(new List<PositionDescription>());
+        public Task<PositionDescription?> GetByPdNbrAsync(string pdNbr) => Task.FromResult<PositionDescription?>(null);
+        public Task<List<PositionDescription>> GetBySeriesAsync(OccupationalSeries series) => Task.FromResult(new List<PositionDescription>());
+        public Task<List<PositionDescription>> GetByGradeRangeAsync(Grade minGrade, Grade maxGrade) => Task.FromResult(new List<PositionDescription>());
+        public Task<List<PositionDescription>> GetByFilterAsync(StagingFilter filter) => Task.FromResult(new List<PositionDescription>());
+    }
+
+    private sealed class RecordingEvaluationRepository : ISchedulePCEvalRepository
+    {
+        public int DeleteAllCallCount { get; private set; }
+        public int StageFromMaxPdCallCount { get; private set; }
+
+        public Task<int> DeleteAllAsync()
+        {
+            DeleteAllCallCount++;
+            return Task.FromResult(0);
+        }
+
+        public Task<int> StageFromMaxPdAsync(StagingFilter filter)
+        {
+            StageFromMaxPdCallCount++;
+            return Task.FromResult(0);
+        }
+
+        public Task<string> InsertAsync(EvaluationResult result) => throw new NotSupportedException();
+        public Task UpdateAsync(EvaluationResult result) => throw new NotSupportedException();
+        public Task<List<SeriesCounts>> GetSeriesCountsAsync() => throw new NotSupportedException();
+        public Task<EvaluationResult?> GetByPdAsync(string pdNbr) => throw new NotSupportedException();
+        public Task<List<EvaluationResult>> GetAllAsync() => throw new NotSupportedException();
+        public Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series) => throw new NotSupportedException();
+        public Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
+        public Task<int> GetCountByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
+        public Task<int> ResetFailedAsync() => throw new NotSupportedException();
+    }
+}

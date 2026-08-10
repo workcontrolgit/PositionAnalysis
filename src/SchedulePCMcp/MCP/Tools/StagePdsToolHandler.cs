@@ -22,23 +22,19 @@ public class StagePdsToolHandler : IMcpToolHandler
         type = "object",
         properties = new
         {
-            gradeMin = new { type = "integer" },
-            gradeMax = new { type = "integer" },
-            series = new { type = "string", description = "4-digit occupational series" },
+            series = new { type = "string", description = "5-digit occupational series" },
             orgCode = new { type = "string" }
         }
     };
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var min = arguments.GetIntOrNull("gradeMin");
-        var max = arguments.GetIntOrNull("gradeMax");
         var series = arguments.GetStringOrNull("series");
         var orgCode = arguments.GetStringOrNull("orgCode");
 
         var filter = new StagingFilter(
-            min != null ? new Grade(min.Value) : null,
-            max != null ? new Grade(max.Value) : null,
+            new Grade(13),
+            new Grade(15),
             !string.IsNullOrWhiteSpace(series) ? new OccupationalSeries(series) : null,
             orgCode);
 

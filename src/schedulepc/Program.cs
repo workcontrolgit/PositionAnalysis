@@ -634,7 +634,7 @@ class SchedulePCChatClient
 
     private static List<string> ExtractSeriesCodes(string input)
     {
-        var matches = Regex.Matches(input, @"\b\d{4}\b");
+        var matches = Regex.Matches(input, @"\b\d{5}\b");
         return matches
             .Select(m => m.Value)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -809,7 +809,7 @@ public sealed class StdioMcpClient : IAsyncDisposable
     private int _requestId;
 
     public StdioMcpClient(string projectPath)
-        : this("dotnet", $"run --project \"{projectPath}\"", Directory.GetCurrentDirectory(), "SchedulePC")
+        : this("dotnet", $"run --project \"{projectPath}\"", Path.GetDirectoryName(projectPath), "SchedulePC")
     {
     }
 

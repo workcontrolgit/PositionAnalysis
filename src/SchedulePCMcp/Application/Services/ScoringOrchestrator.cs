@@ -359,6 +359,7 @@ Schedule PC Criterion definitions:
 
         var evaluationResult = new EvaluationResult
         {
+            PdSeqNum = pd.PdSeqNum,
             PdNbr = pd.PdNbr,
             Series = pd.Series,
             Grade = pd.Grade,

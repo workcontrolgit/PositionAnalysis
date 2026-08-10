@@ -35,7 +35,7 @@ public interface IScoringOrchestrator
     /// <summary>
     /// Scores all Position Descriptions for specified occupational series
     /// </summary>
-    /// <param name="series">Enumerable of occupational series codes (4-digit strings)</param>
+    /// <param name="series">Enumerable of occupational series codes (5-digit strings)</param>
     Task ScoreBySeriesAsync(IEnumerable<string> series);
 
     /// <summary>

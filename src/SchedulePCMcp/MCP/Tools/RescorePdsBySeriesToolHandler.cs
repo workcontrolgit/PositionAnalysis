@@ -28,7 +28,7 @@ public class RescorePdsBySeriesToolHandler : IMcpToolHandler
             {
                 type = "array",
                 items = new { type = "string" },
-                description = "List of 4-digit occupational series codes to rescore (e.g. ['0110', '0301'])"
+                description = "List of 5-digit occupational series codes to rescore (e.g. ['00110', '00301'])"
             }
         },
         required = new[] { "series" }

@@ -7,6 +7,7 @@ namespace SchedulePCMcp.Domain.Entities;
 /// </summary>
 public class EvaluationResult
 {
+    public int PdSeqNum { get; set; }
     public string PdNbr { get; set; } = string.Empty;
     public OccupationalSeries Series { get; set; } = null!;
     public Grade Grade { get; set; } = null!;

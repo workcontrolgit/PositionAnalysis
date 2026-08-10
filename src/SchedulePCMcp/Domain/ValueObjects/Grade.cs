@@ -1,7 +1,7 @@
 namespace SchedulePCMcp.Domain.ValueObjects;
 
 /// <summary>
-/// Value object representing a GS grade (1-15)
+/// Value object representing a grade supplied by Oracle
 /// </summary>
 public class Grade : IEquatable<Grade>
 {
@@ -9,9 +9,6 @@ public class Grade : IEquatable<Grade>
 
     public Grade(int value)
     {
-        if (value < 1 || value > 15)
-            throw new ArgumentException($"Grade must be between 1 and 15, got {value}", nameof(value));
-
         Value = value;
     }
 
