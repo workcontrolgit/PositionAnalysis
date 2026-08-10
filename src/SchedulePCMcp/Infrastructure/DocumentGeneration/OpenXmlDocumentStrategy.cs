@@ -106,7 +106,7 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         SetSdtText(allSdts, nsm, 2, pd.Title);
         SetRatingCell(doc, nsm, allSdts, 3, ratingLabel, ratingBg, ratingFg);
         SetSdtText(allSdts, nsm, 4, pd.OrganizationCode);
-        SetSdtText(allSdts, nsm, 5, $"GS-{pd.Series}-{pd.Grade}");
+        SetSdtText(allSdts, nsm, 5, $"{pd.PayPlan}-{pd.Series}-{pd.Grade}");
         SetSdtText(allSdts, nsm, 6, "Competitive");
         SetSdtText(allSdts, nsm, 7, pd.IntroText);
 

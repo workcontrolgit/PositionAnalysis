@@ -12,4 +12,12 @@ public class GradeTests
 
         Assert.Equal(0, grade.Value);
     }
+
+    [Fact]
+    public void ToString_ReturnsOnlyTheTwoDigitGrade()
+    {
+        var grade = new Grade(14);
+
+        Assert.Equal("14", grade.ToString());
+    }
 }

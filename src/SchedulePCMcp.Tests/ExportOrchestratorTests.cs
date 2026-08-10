@@ -70,6 +70,8 @@ public class ExportOrchestratorTests
             Assert.Equal("Rating", worksheet.Cell(1, 12).GetString());
             Assert.Equal("Word Form Filename", worksheet.Cell(1, 24).GetString());
             Assert.Equal("Policy Director", worksheet.Cell(2, 2).GetString());
+            Assert.Equal("GS", worksheet.Cell(2, 4).GetString());
+            Assert.Equal("14", worksheet.Cell(2, 6).GetString());
             Assert.Equal("Supervisor or Manager", worksheet.Cell(2, 7).GetString());
             Assert.Equal("HIGH", worksheet.Cell(2, 12).GetString());
             Assert.Equal(XLColor.FromHtml("#E2F0D9"), worksheet.Cell(2, 12).Style.Fill.BackgroundColor);

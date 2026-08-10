@@ -197,7 +197,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
     {
         var titleSlug = Regex.Replace(pd.Title, @"[^a-zA-Z0-9 -]", "");
         titleSlug = Regex.Replace(titleSlug, @"\s+", "-");
-        return $"PD-{pd.PdNbr}_{titleSlug}_GS-{pd.Series.Code}-{pd.Grade.Value:D2}.docx";
+        return $"PD-{pd.PdNbr}_{titleSlug}_{pd.PayPlan}-{pd.Series.Code}-{pd.Grade.Value:D2}.docx";
     }
 
     private async Task MarkGenerationFailedAsync(EvaluationResult result, string reason)
