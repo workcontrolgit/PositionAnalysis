@@ -14,7 +14,7 @@ public class GetStagingReportToolHandler : IMcpToolHandler
 
     public string Name => "get_staging_report";
 
-    public string Description => "Get staged counts grouped by occupational series";
+    public string Description => "Get total staged PD count by occupational series (pre-scoring snapshot)";
 
     public object InputSchema => new
     {
@@ -29,16 +29,13 @@ public class GetStagingReportToolHandler : IMcpToolHandler
         var series = report.Select(item => new
         {
             series = item.Key.Code,
-            staged = item.Value.Staged,
-            inProgress = item.Value.InProgress,
-            complete = item.Value.Complete,
-            failed = item.Value.Failed,
-            percentComplete = item.Value.PercentComplete,
             total = item.Value.Total
         }).ToList();
 
         return new
         {
+            totalSeries = series.Count,
+            totalPds = series.Sum(s => s.total),
             series
         };
     }
