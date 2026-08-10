@@ -21,8 +21,11 @@ TestResults/
 _ReSharper*/
 *.DotSettings.user
 
+# Logs
+**/logs/
+
+# Reports output
+**/reports/
+
 # OracleSqlclAgent
 src/OracleSqlclAgent/appsettings.Development.json
-src/OracleSqlclAgent/logs/
-src/OracleSqlclAgent/bin/
-src/OracleSqlclAgent/obj/
