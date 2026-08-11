@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -271,7 +272,9 @@ public class ExportOrchestrator : IExportOrchestrator
 
     private static string ToFileNameSlug(string value)
     {
-        var sanitizedValue = new string(value
+        // Source titles sometimes carry a leading numeric code, e.g. "015 - FOREIGN AFFAIRS OFFICER"; drop it for the filename.
+        var withoutPrefix = Regex.Replace(value, @"^\d+\s*-\s*", "");
+        var sanitizedValue = new string(withoutPrefix
             .Where(character => char.IsLetterOrDigit(character) || character == ' ' || character == '-')
             .ToArray());
         return string.Join("-", sanitizedValue.Split(' ', StringSplitOptions.RemoveEmptyEntries));
