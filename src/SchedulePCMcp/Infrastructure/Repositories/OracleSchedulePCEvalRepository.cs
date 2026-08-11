@@ -439,6 +439,192 @@ public class OracleSchedulePCEvalRepository : ISchedulePCEvalRepository
         return affected;
     }
 
+    public async Task<int> RecoverExpiredClaimsAsync()
+    {
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            UPDATE schedule_pc_eval
+            SET status = 'PENDING',
+                worker_id = NULL,
+                claimed_at = NULL,
+                lease_expires_at = NULL
+            WHERE status = 'IN_PROGRESS'
+              AND lease_expires_at <= SYSTIMESTAMP";
+
+        using var command = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout
+        };
+
+        var recovered = await command.ExecuteNonQueryAsync();
+        if (recovered > 0)
+            _logger.LogWarning("Recovered {Count} expired Schedule PC worker claims", recovered);
+
+        return recovered;
+    }
+
+    public async Task<EvaluationResult?> ClaimNextPendingAsync(string workerId, TimeSpan leaseDuration)
+    {
+        if (string.IsNullOrWhiteSpace(workerId))
+            throw new ArgumentException("Worker ID cannot be empty.", nameof(workerId));
+
+        if (leaseDuration <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(leaseDuration), "Lease duration must be positive.");
+
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+        using var transaction = connection.BeginTransaction();
+
+        try
+        {
+            // Oracle 19c accepts this direct base-table SELECT FOR UPDATE SKIP LOCKED; peer-locked rows are skipped.
+            const string selectSql = @"
+                SELECT pd_seq_num, pd_nbr, series, TO_NUMBER(grade) AS grade
+                FROM schedule_pc_eval
+                WHERE UPPER(NVL(status, 'PENDING')) IN ('PENDING', 'STAGED')
+                ORDER BY pd_seq_num
+                FOR UPDATE SKIP LOCKED";
+
+            using var selectCommand = new OracleCommand(selectSql, connection)
+            {
+                Transaction = transaction,
+                CommandTimeout = _settings.CommandTimeout
+            };
+
+            using var reader = await selectCommand.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                transaction.Commit();
+                return null;
+            }
+
+            var pdSeqNum = Convert.ToInt32(reader.GetValue(0));
+            var pdNbr = reader.GetString(1);
+            var seriesCode = reader.GetString(2);
+            var grade = Convert.ToInt32(reader.GetValue(3));
+            reader.Close();
+
+            const string updateSql = @"
+                UPDATE schedule_pc_eval
+                SET status = 'IN_PROGRESS',
+                    worker_id = :workerId,
+                    claimed_at = SYSTIMESTAMP,
+                    lease_expires_at = SYSTIMESTAMP + NUMTODSINTERVAL(:leaseSeconds, 'SECOND')
+                WHERE pd_seq_num = :pdSeqNum
+                  AND pd_nbr = :pdNbr
+                  AND series = :series
+                                    AND UPPER(NVL(status, 'PENDING')) IN ('PENDING', 'STAGED')";
+
+            using var updateCommand = new OracleCommand(updateSql, connection)
+            {
+                Transaction = transaction,
+                CommandTimeout = _settings.CommandTimeout,
+                BindByName = true
+            };
+            updateCommand.Parameters.Add(":workerId", workerId);
+            updateCommand.Parameters.Add(":leaseSeconds", leaseDuration.TotalSeconds);
+            updateCommand.Parameters.Add(":pdSeqNum", pdSeqNum);
+            updateCommand.Parameters.Add(":pdNbr", pdNbr);
+            updateCommand.Parameters.Add(":series", seriesCode);
+
+            var updated = await updateCommand.ExecuteNonQueryAsync();
+            if (updated != 1)
+                throw new InvalidOperationException($"Expected to claim one Schedule PC evaluation row but updated {updated}.");
+
+            transaction.Commit();
+            return new EvaluationResult
+            {
+                PdSeqNum = pdSeqNum,
+                PdNbr = pdNbr,
+                Series = new OccupationalSeries(seriesCode),
+                Grade = new Grade(grade),
+                Rating = "PENDING"
+            };
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
+    public async Task<bool> CompleteClaimAsync(EvaluationResult result, string workerId)
+    {
+        if (string.IsNullOrWhiteSpace(workerId))
+            throw new ArgumentException("Worker ID cannot be empty.", nameof(workerId));
+
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            UPDATE schedule_pc_eval
+            SET status = :status,
+                rating = :rating,
+                is_candidate = :isCandidate,
+                justification_summary = :justification,
+                result_json = :resultJson,
+                scored_at = SYSTIMESTAMP,
+                error_msg = :errorMsg,
+                worker_id = NULL,
+                claimed_at = NULL,
+                lease_expires_at = NULL
+            WHERE pd_nbr = :pdNbr
+              AND series = :series
+              AND status = 'IN_PROGRESS'
+                            AND worker_id = :workerId
+                            AND lease_expires_at > SYSTIMESTAMP";
+
+        using var command = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout,
+            BindByName = true
+        };
+        command.Parameters.Add(":status", MapStatusFromResult(result));
+        command.Parameters.Add(":rating", result.Rating);
+        command.Parameters.Add(":isCandidate", result.IsCandidate ? "Y" : "N");
+        command.Parameters.Add(":justification", result.JustificationSummary);
+        command.Parameters.Add(":resultJson", JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));
+        command.Parameters.Add(":errorMsg", result.Rating.Equals("FAILED", StringComparison.OrdinalIgnoreCase) ? result.JustificationSummary : null);
+        command.Parameters.Add(":pdNbr", result.PdNbr);
+        command.Parameters.Add(":series", result.Series.ToString());
+        command.Parameters.Add(":workerId", workerId);
+
+        var updated = await command.ExecuteNonQueryAsync();
+        if (updated == 0)
+            _logger.LogWarning("Schedule PC worker {WorkerId} no longer owns claim for PD {PdNbr}", workerId, result.PdNbr);
+
+        return updated == 1;
+    }
+
+    public async Task<QueueStatus> GetQueueStatusAsync()
+    {
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            SELECT SUM(CASE WHEN UPPER(NVL(status, 'PENDING')) IN ('PENDING', 'STAGED') THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN UPPER(NVL(status, '')) = 'IN_PROGRESS' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN UPPER(NVL(status, 'PENDING')) IN ('DONE', 'COMPLETE', 'COMPLETED') THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN UPPER(NVL(status, '')) IN ('FAILED', 'GENERATION_FAILED') THEN 1 ELSE 0 END)
+            FROM schedule_pc_eval";
+
+        using var command = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout
+        };
+        using var reader = await command.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+            return new QueueStatus(0, 0, 0, 0);
+
+        return new QueueStatus(
+            reader.IsDBNull(0) ? 0 : Convert.ToInt32(reader.GetValue(0)),
+            reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1)),
+            reader.IsDBNull(2) ? 0 : Convert.ToInt32(reader.GetValue(2)),
+            reader.IsDBNull(3) ? 0 : Convert.ToInt32(reader.GetValue(3)));
+    }
+
     private static string MapStatus(EvaluationStatus status)
     {
         return status switch

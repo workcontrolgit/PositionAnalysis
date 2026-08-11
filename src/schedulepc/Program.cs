@@ -29,10 +29,39 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
+    var processAllMode = args.Length == 1 && args[0].Equals("--process-all", StringComparison.OrdinalIgnoreCase);
+    var schedulePcMcpLaunchCommand = SchedulePcMcpLaunchResolver.Resolve(AppContext.BaseDirectory);
+
+    await using var mcpClient = new StdioMcpClient(schedulePcMcpLaunchCommand);
+    await mcpClient.StartAsync();
+
+    using var processAllCancellation = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, eventArgs) =>
+    {
+        eventArgs.Cancel = true;
+        if (processAllMode)
+        {
+            processAllCancellation.Cancel();
+            return;
+        }
+
+        mcpClient.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        Environment.Exit(0);
+    };
+
+    if (processAllMode)
+    {
+        Environment.ExitCode = await new ProcessAllRunner(
+            mcpClient,
+            TimeSpan.FromSeconds(30),
+            (Func<TimeSpan, CancellationToken, Task>)Task.Delay,
+            Log.Logger).RunAsync(processAllCancellation.Token);
+        return;
+    }
+
     var provider = configuration["AI:Provider"] ?? "Ollama";
     IChatClient chatClient = BuildChatClient(configuration, provider);
     var modelDisplay = GetModelDisplay(configuration, provider);
-    var schedulePcMcpProjectPath = ResolveSchedulePcMcpProjectPath();
     var sqlclPath = configuration["SqlclMcp:Path"];
 
     // Display banner using Spectre.Console
@@ -40,16 +69,6 @@ try
     AnsiConsole.MarkupLine("[grey]Authority: EO Implementing Schedule Policy/Career[/]");
     AnsiConsole.MarkupLine($"[teal]Provider:[/] [bold]{provider}[/]");
     AnsiConsole.MarkupLine($"[teal]Model:[/] [bold]{modelDisplay}[/]\n");
-
-    await using var mcpClient = new StdioMcpClient(schedulePcMcpProjectPath);
-    await mcpClient.StartAsync();
-
-    Console.CancelKeyPress += (_, eventArgs) =>
-    {
-        eventArgs.Cancel = true;
-        mcpClient.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        Environment.Exit(0);
-    };
 
     McpClient? oracleMcpClient = null;
     if (!string.IsNullOrWhiteSpace(sqlclPath) && File.Exists(sqlclPath))
@@ -159,18 +178,6 @@ static string GetModelDisplay(IConfiguration config, string provider) =>
         "azureopenai" => config["AI:AzureOpenAI:DeploymentName"] ?? "gpt-4o",
         _ => config["AI:Claude:DeploymentName"] ?? "claude-opus-4-6"
     };
-
-static string ResolveSchedulePcMcpProjectPath()
-{
-    var projectPath = Path.GetFullPath(
-        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "SchedulePCMcp", "SchedulePCMcp.csproj"));
-
-    if (File.Exists(projectPath))
-        return projectPath;
-
-    throw new DirectoryNotFoundException(
-        $"Could not locate conventional MCP project path: {projectPath}");
-}
 
 static async Task<IReadOnlyList<string>> ListOracleToolNamesAsync(McpClient mcpClient)
 {
@@ -329,6 +336,32 @@ class SchedulePCChatClient
         AnsiConsole.MarkupLine($"[green]Rescore complete:[/] PD [bold]{Markup.Escape(pdNbr)}[/]");
         if (!string.IsNullOrWhiteSpace(status))
             AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
+    private async Task RescoreHumanSchedulePcAsync()
+    {
+        var result = await _mcpClient.CallToolAsync("rescore_human_schedule_pc_pds", new { });
+
+        if (result.TryGetProperty("error", out var errorEl))
+        {
+            AnsiConsole.MarkupLine($"[red]Rescore refused:[/] {Markup.Escape(errorEl.GetString() ?? "")}");
+            return;
+        }
+
+        var selectedCount = result.TryGetProperty("selectedCount", out var sc) && sc.TryGetInt32(out var n1) ? n1 : 0;
+        var scoredCount = result.TryGetProperty("scoredCount", out var scd) && scd.TryGetInt32(out var n2) ? n2 : 0;
+        var failedCount = result.TryGetProperty("failedCount", out var fc) && fc.TryGetInt32(out var n3) ? n3 : 0;
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+
+        AnsiConsole.MarkupLine($"[green]Rescore complete:[/] {scoredCount}/{selectedCount} human-flagged Schedule P/C PDs (failed: {failedCount})");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+
+        if (failedCount > 0 && result.TryGetProperty("failedPdNumbers", out var failedEl))
+        {
+            var failedPdNumbers = failedEl.EnumerateArray().Select(e => e.GetString()).Where(v => v is not null);
+            AnsiConsole.MarkupLine($"[yellow]Failed PDs:[/] {Markup.Escape(string.Join(", ", failedPdNumbers))}");
+        }
     }
 
     private async Task RetryFailedAsync()
@@ -523,6 +556,12 @@ class SchedulePCChatClient
         if (IsRescoreBySeriesPrompt(normalized))
         {
             await RescoreBySeriesAsync(userInput);
+            return true;
+        }
+
+        if (IsRescoreHumanSchedulePcPrompt(normalized))
+        {
+            await RescoreHumanSchedulePcAsync();
             return true;
         }
 
@@ -784,6 +823,13 @@ class SchedulePCChatClient
         normalized.Contains("rescore by series") ||
         normalized.Contains("re-score series");
 
+    private static bool IsRescoreHumanSchedulePcPrompt(string normalized) =>
+        normalized.Contains("rescore_human_schedule_pc_pds") ||
+        normalized.Contains("rescore human") ||
+        normalized.Contains("re-score human") ||
+        normalized.Contains("rescore the 90") ||
+        normalized.Contains("score the 90");
+
     private static bool IsRescorePdPrompt(string normalized) =>
         normalized.StartsWith("rescore_pd") ||
         normalized.StartsWith("rescore pd") ||
@@ -805,7 +851,7 @@ class SchedulePCChatClient
     }
 }
 
-public sealed class StdioMcpClient : IAsyncDisposable
+public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
 {
     private readonly string _command;
     private readonly string _arguments;
@@ -815,8 +861,8 @@ public sealed class StdioMcpClient : IAsyncDisposable
     private Process? _process;
     private int _requestId;
 
-    public StdioMcpClient(string projectPath)
-        : this("dotnet", $"run --project \"{projectPath}\"", Path.GetDirectoryName(projectPath), "SchedulePC")
+    public StdioMcpClient(SchedulePcMcpLaunchCommand launchCommand)
+        : this(launchCommand.Command, launchCommand.Arguments, launchCommand.WorkingDirectory, "SchedulePC")
     {
     }
 
@@ -996,4 +1042,131 @@ public sealed class StdioMcpClient : IAsyncDisposable
             _requestLock.Dispose();
         }
     }
+}
+
+public sealed class ProcessAllRunner
+{
+    private readonly ISchedulePcMcpClient _mcpClient;
+    private readonly TimeSpan _pollInterval;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
+    private readonly ILogger _logger;
+
+    public ProcessAllRunner(
+        ISchedulePcMcpClient mcpClient,
+        TimeSpan pollInterval,
+        Func<TimeSpan, Task> delayAsync,
+        ILogger? logger = null)
+        : this(mcpClient, pollInterval, (delay, _) => delayAsync(delay), logger)
+    {
+    }
+
+    public ProcessAllRunner(
+        ISchedulePcMcpClient mcpClient,
+        TimeSpan pollInterval,
+        Func<TimeSpan, CancellationToken, Task> delayAsync,
+        ILogger? logger = null)
+    {
+        _mcpClient = mcpClient;
+        _pollInterval = pollInterval;
+        _delayAsync = delayAsync;
+        _logger = logger ?? Log.Logger;
+    }
+
+    public async Task<int> RunAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.Information("Starting unattended Schedule PC scoring run");
+            cancellationToken.ThrowIfCancellationRequested();
+            await _mcpClient.CallToolAsync("process_all_pds", new { });
+
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var response = await _mcpClient.CallToolAsync("get_queue_status", new { });
+                var status = ParseQueueStatus(response);
+
+                _logger.Information(
+                    "Schedule PC queue status: Pending={Pending}, InProgress={InProgress}, Complete={Complete}, Failed={Failed}, IsDrained={IsDrained}, RunFailed={RunFailed}",
+                    status.Pending,
+                    status.InProgress,
+                    status.Complete,
+                    status.Failed,
+                    status.IsDrained,
+                    status.RunFailed);
+
+                if (status.RunFailed)
+                {
+                    _logger.Error("Schedule PC unattended scoring run failed: {RunError}", status.RunError);
+                    return 1;
+                }
+
+                if (status.IsDrained)
+                {
+                    var exitCode = status.Failed == 0 ? 0 : 1;
+                    _logger.Information("Schedule PC unattended scoring run finished with exit code {ExitCode}", exitCode);
+                    return exitCode;
+                }
+
+                await _delayAsync(_pollInterval, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.Information("Schedule PC unattended scoring run was cancelled");
+            return 2;
+        }
+    }
+
+    private static QueueStatusResponse ParseQueueStatus(JsonElement response)
+    {
+        var pending = GetRequiredInt32(response, "pending");
+        var inProgress = GetRequiredInt32(response, "inProgress");
+        var isDrained = GetRequiredBoolean(response, "isDrained");
+        var calculatedDrained = pending == 0 && inProgress == 0;
+        if (isDrained != calculatedDrained)
+            throw new InvalidOperationException("get_queue_status response has an isDrained field inconsistent with pending and inProgress.");
+
+        return new QueueStatusResponse(
+            pending,
+            inProgress,
+            GetRequiredInt32(response, "complete"),
+            GetRequiredInt32(response, "failed"),
+            isDrained,
+            GetRequiredBoolean(response, "runFailed"),
+            GetRequiredNullableString(response, "runError"));
+    }
+
+    private static int GetRequiredInt32(JsonElement response, string propertyName)
+    {
+        if (!response.TryGetProperty(propertyName, out var property) || !property.TryGetInt32(out var value))
+            throw new InvalidOperationException($"get_queue_status response is missing a valid integer '{propertyName}' field.");
+
+        return value;
+    }
+
+    private static bool GetRequiredBoolean(JsonElement response, string propertyName)
+    {
+        if (!response.TryGetProperty(propertyName, out var property) || property.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
+            throw new InvalidOperationException($"get_queue_status response is missing a valid boolean '{propertyName}' field.");
+
+        return property.GetBoolean();
+    }
+
+    private static string? GetRequiredNullableString(JsonElement response, string propertyName)
+    {
+        if (!response.TryGetProperty(propertyName, out var property) || property.ValueKind is not JsonValueKind.String and not JsonValueKind.Null)
+            throw new InvalidOperationException($"get_queue_status response is missing a valid string or null '{propertyName}' field.");
+
+        return property.ValueKind == JsonValueKind.Null ? null : property.GetString();
+    }
+
+    private sealed record QueueStatusResponse(
+        int Pending,
+        int InProgress,
+        int Complete,
+        int Failed,
+        bool IsDrained,
+        bool RunFailed,
+        string? RunError);
 }

@@ -34,4 +34,14 @@
     <Content Include="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('appsettings.Development.json')" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SchedulePCMcp\SchedulePCMcp.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="PublishSchedulePcMcp" AfterTargets="Publish">
+    <MSBuild Projects="..\SchedulePCMcp\SchedulePCMcp.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)SchedulePCMcp\" />
+  </Target>
+
 </Project>

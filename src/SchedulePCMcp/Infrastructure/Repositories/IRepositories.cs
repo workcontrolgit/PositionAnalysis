@@ -15,6 +15,7 @@ public interface IPositionDescriptionRepository
     Task<List<PositionDescription>> GetBySeriesAsync(OccupationalSeries series);
     Task<List<PositionDescription>> GetByGradeRangeAsync(Grade minGrade, Grade maxGrade);
     Task<List<PositionDescription>> GetByFilterAsync(StagingFilter filter);
+    Task<List<string>> GetHumanSchedulePcPdNumbersAsync();
 }
 
 /// <summary>
@@ -34,6 +35,10 @@ public interface ISchedulePCEvalRepository
     Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status);
     Task<int> GetCountByStatusAsync(EvaluationStatus status);
     Task<int> ResetFailedAsync();
+    Task<int> RecoverExpiredClaimsAsync() => throw new NotSupportedException();
+    Task<EvaluationResult?> ClaimNextPendingAsync(string workerId, TimeSpan leaseDuration) => throw new NotSupportedException();
+    Task<bool> CompleteClaimAsync(EvaluationResult result, string workerId) => throw new NotSupportedException();
+    Task<QueueStatus> GetQueueStatusAsync() => throw new NotSupportedException();
 }
 
 public sealed record SeriesCounts(string Series, int Staged, int InProgress, int Complete, int Failed);

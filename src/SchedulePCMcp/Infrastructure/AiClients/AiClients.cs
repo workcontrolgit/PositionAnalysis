@@ -105,6 +105,7 @@ public class AzureOpenAiClient : IAiClient
     private readonly string _endpoint;
     private readonly string _apiKey;
     private readonly string _deploymentName;
+    private readonly int _maxCompletionTokens;
     private readonly float _temperature;
     private readonly ILogger<AzureOpenAiClient> _logger;
 
@@ -114,6 +115,7 @@ public class AzureOpenAiClient : IAiClient
         _endpoint = azureSettings.Endpoint;
         _apiKey = azureSettings.ApiKey;
         _deploymentName = azureSettings.DeploymentName;
+        _maxCompletionTokens = azureSettings.MaxCompletionTokens;
         _temperature = (float)azureSettings.Temperature;
         _logger = logger;
 
@@ -137,7 +139,7 @@ public class AzureOpenAiClient : IAiClient
                     new { role = "system", content = systemPrompt },
                     new { role = "user", content = prompt }
                 },
-                max_completion_tokens = 16384,
+                max_completion_tokens = _maxCompletionTokens,
                 temperature = _temperature
             };
 

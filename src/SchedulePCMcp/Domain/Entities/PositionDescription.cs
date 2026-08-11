@@ -14,6 +14,8 @@ public class PositionDescription
     public Grade Grade { get; set; } = null!;
     public string OrganizationCode { get; set; } = string.Empty;
     public string OrganizationName { get; set; } = string.Empty;
+    public string BureauCode { get; set; } = string.Empty;
+    public string BureauName { get; set; } = string.Empty;
     public string PayPlan { get; set; } = string.Empty;
     public string ManagerLevel { get; set; } = string.Empty;
     public string PositionSensitivity { get; set; } = string.Empty;

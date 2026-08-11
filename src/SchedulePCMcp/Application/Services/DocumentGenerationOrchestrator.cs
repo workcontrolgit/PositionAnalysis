@@ -195,7 +195,9 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
 
     private static string BuildFileName(PositionDescription pd)
     {
-        var titleSlug = Regex.Replace(pd.Title, @"[^a-zA-Z0-9 -]", "");
+        // Source titles sometimes carry a leading numeric code, e.g. "015 - FOREIGN AFFAIRS OFFICER"; drop it for the filename.
+        var title = Regex.Replace(pd.Title, @"^\d+\s*-\s*", "");
+        var titleSlug = Regex.Replace(title, @"[^a-zA-Z0-9 -]", "");
         titleSlug = Regex.Replace(titleSlug, @"\s+", "-");
         return $"PD-{pd.PdNbr}_{titleSlug}_{pd.PayPlan}-{pd.Series.Code}-{pd.Grade.Value:D2}.docx";
     }

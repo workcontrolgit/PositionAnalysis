@@ -119,6 +119,7 @@ public class Program
                 services.AddScoped<IProcessingStatusService, ProcessingStatusService>();
                 services.AddScoped<IDocumentGenerationOrchestrator, DocumentGenerationOrchestrator>();
                 services.AddScoped<IExportOrchestrator, ExportOrchestrator>();
+                services.AddSingleton<ProcessAllRunStatusService>();
 
                 // MCP Tool Handlers
                 services.AddScoped<IMcpToolHandler, StagePdsToolHandler>();
@@ -126,11 +127,13 @@ public class Program
                 services.AddScoped<IMcpToolHandler, RescorePdToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescorePdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreAllPdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescoreHumanSchedulePcPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ClearSchedulePcEvalToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessPdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessAllPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusToolHandler>();
+                services.AddScoped<IMcpToolHandler, GetQueueStatusToolHandler>();
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ExportResultsToolHandler>();
                 services.AddSingleton<McpToolsProvider>();
