@@ -101,13 +101,19 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         var ratingLabel    = $"{result.Rating} -- {triggeredCount} of 4 criteria met";
         var evalDate       = result.EvaluatedDate.ToString("yyyy-MM-dd");
 
+        // PD_ORIGIN_ORG_CODE/ORG_DESC are unpopulated for all rows in the current source data;
+        // fall back to BUREAU_CODE/BUREAU_DESC (populated for ~97% of rows) so the fields aren't blank.
+        var orgCode = string.IsNullOrWhiteSpace(pd.OrganizationCode) ? pd.BureauCode : pd.OrganizationCode;
+        var orgName = string.IsNullOrWhiteSpace(pd.OrganizationName)
+            ? (string.IsNullOrWhiteSpace(pd.BureauName) ? orgCode : pd.BureauName)
+            : pd.OrganizationName;
+
         // Section 1
         SetSdtText(allSdts, nsm, 0, result.PdNbr);
         SetSdtText(allSdts, nsm, 1, evalDate);
         SetSdtText(allSdts, nsm, 2, pd.Title);
         SetRatingCell(doc, nsm, allSdts, 3, ratingLabel, ratingBg, ratingFg);
-        // PD_ORIGIN_ORG_CODE is frequently null in the source data; fall back to the org name so the field isn't blank.
-        SetSdtText(allSdts, nsm, 4, string.IsNullOrWhiteSpace(pd.OrganizationCode) ? pd.OrganizationName : pd.OrganizationCode);
+        SetSdtText(allSdts, nsm, 4, orgCode);
         SetSdtText(allSdts, nsm, 5, $"{pd.PayPlan}-{pd.Series}-{pd.Grade}");
         SetSdtText(allSdts, nsm, 6, "Competitive");
         SetSdtText(allSdts, nsm, 7, pd.IntroText);
@@ -143,8 +149,8 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         // Appendix A
         SetSdtText(allSdts, nsm, 28, result.PdNbr);
         SetSdtText(allSdts, nsm, 29, pd.Title);
-        SetSdtText(allSdts, nsm, 30, pd.OrganizationName);
-        SetSdtText(allSdts, nsm, 31, pd.OrganizationCode);
+        SetSdtText(allSdts, nsm, 30, orgName);
+        SetSdtText(allSdts, nsm, 31, orgCode);
         SetSdtText(allSdts, nsm, 32, "GS");
         SetSdtText(allSdts, nsm, 33, pd.Series.ToString());
         SetSdtText(allSdts, nsm, 34, pd.Grade.ToString());

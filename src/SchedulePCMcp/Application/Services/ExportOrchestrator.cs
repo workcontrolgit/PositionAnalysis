@@ -234,7 +234,7 @@ public class ExportOrchestrator : IExportOrchestrator
 
             worksheet.Cell(row, 1).Value = result.PdNbr;
             worksheet.Cell(row, 2).Value = title;
-            worksheet.Cell(row, 3).Value = position?.OrganizationCode ?? string.Empty;
+            worksheet.Cell(row, 3).Value = string.IsNullOrWhiteSpace(position?.OrganizationCode) ? position?.BureauCode ?? string.Empty : position.OrganizationCode;
             worksheet.Cell(row, 4).Value = payPlan;
             worksheet.Cell(row, 5).Value = result.Series.ToString();
             worksheet.Cell(row, 6).Value = result.Grade.ToString();

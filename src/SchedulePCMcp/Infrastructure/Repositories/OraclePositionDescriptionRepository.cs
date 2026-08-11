@@ -236,7 +236,7 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
              SELECT header.pd_seq_num, header.pd_nbr, header.pd_position_title_text, header.gvt_occ_series,
                  header.grd_code, header.pd_origin_org_code, header.org_desc, header.pd_intro,
                  header.gvt_pay_plan, header.pd_manager_level, header.position_sensitivity,
-                 header.gm_public_trust, header.position_occupied_code
+                 header.gm_public_trust, header.position_occupied_code, header.bureau_code, header.bureau_desc
              FROM temp_pd_sched_pc header
              WHERE header.pd_nbr = :pdNbr
             AND {EligibleDutiesExistsPredicate}";
@@ -278,6 +278,8 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
             Grade = grade,
             OrganizationCode = pdReader.IsDBNull(5) ? string.Empty : pdReader.GetString(5),
             OrganizationName = pdReader.IsDBNull(6) ? string.Empty : pdReader.GetString(6),
+            BureauCode = pdReader.IsDBNull(13) ? string.Empty : pdReader.GetString(13),
+            BureauName = pdReader.IsDBNull(14) ? string.Empty : pdReader.GetString(14),
             PayPlan = pdReader.IsDBNull(8) ? string.Empty : pdReader.GetValue(8).ToString() ?? string.Empty,
             ManagerLevel = pdReader.IsDBNull(9) ? string.Empty : pdReader.GetValue(9).ToString() ?? string.Empty,
             PositionSensitivity = pdReader.IsDBNull(10) ? string.Empty : pdReader.GetValue(10).ToString() ?? string.Empty,
