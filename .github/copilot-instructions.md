@@ -28,3 +28,6 @@ Summary: README.md exists and includes setup/run/reset instructions. This file h
 - Work through each checklist item systematically.
 - Keep communication concise and focused.
 - Follow development best practices.
+- Always use the Oracle MCP (SQLcl MCP server / oracle-sql-query and related
+  skills) to query Oracle data. Do not use PowerShell scripts or the sqlcl/SQL
+  client CLI to run ad hoc queries.
