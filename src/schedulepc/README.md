@@ -53,6 +53,18 @@ Schedule PC> query grade 13-15
    dotnet run
    ```
 
+## Unattended Scoring
+
+Run the existing Schedule PC scoring queue without starting the interactive chat client:
+
+```powershell
+dotnet run -- --process-all
+```
+
+This starts the SchedulePCMcp child process, triggers scoring for all currently queued PDs, and polls the aggregate queue until no work remains. It does not stage PDs, generate documents, or export results.
+
+The command exits with code `0` when the queue drains with no failed PDs, `1` when the queue drains with one or more failed PDs, or `2` when the worker is cancelled before normal terminal completion.
+
 ## Commands
 
 | Command | Example | Purpose |

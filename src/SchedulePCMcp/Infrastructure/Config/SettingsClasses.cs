@@ -32,6 +32,7 @@ public class AzureOpenAiSettings
     public string Endpoint { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public string DeploymentName { get; set; } = string.Empty;
+    public int MaxCompletionTokens { get; set; } = 16384;
     public double Temperature { get; set; } = 0.7;
 }
 

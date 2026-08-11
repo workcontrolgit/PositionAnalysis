@@ -97,6 +97,10 @@ public class ExportOrchestratorTests
         public Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
         public Task<int> GetCountByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
         public Task<int> ResetFailedAsync() => throw new NotSupportedException();
+        public Task<int> RecoverExpiredClaimsAsync() => throw new NotSupportedException();
+        public Task<EvaluationResult?> ClaimNextPendingAsync(string workerId, TimeSpan leaseDuration) => throw new NotSupportedException();
+        public Task<bool> CompleteClaimAsync(EvaluationResult result, string workerId) => throw new NotSupportedException();
+        public Task<QueueStatus> GetQueueStatusAsync() => throw new NotSupportedException();
     }
 
     private sealed class PositionDescriptionRepository(PositionDescription position) : IPositionDescriptionRepository
@@ -106,5 +110,6 @@ public class ExportOrchestratorTests
         public Task<List<PositionDescription>> GetBySeriesAsync(OccupationalSeries series) => throw new NotSupportedException();
         public Task<List<PositionDescription>> GetByGradeRangeAsync(Grade minGrade, Grade maxGrade) => throw new NotSupportedException();
         public Task<List<PositionDescription>> GetByFilterAsync(StagingFilter filter) => throw new NotSupportedException();
+        public Task<List<string>> GetHumanSchedulePcPdNumbersAsync() => throw new NotSupportedException();
     }
 }

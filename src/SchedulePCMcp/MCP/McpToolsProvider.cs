@@ -3,6 +3,43 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace SchedulePCMcp.MCP;
 
+public sealed record ProcessAllRunStatus(bool IsActive, bool IsCompleted, bool HasFailed, string? Error);
+
+public sealed class ProcessAllRunStatusService
+{
+    private readonly object _syncRoot = new();
+    private ProcessAllRunStatus _status = new(false, false, false, null);
+
+    public ProcessAllRunStatus GetStatus()
+    {
+        lock (_syncRoot)
+            return _status;
+    }
+
+    public Task StartAsync(Func<Task> operation)
+    {
+        lock (_syncRoot)
+            _status = new ProcessAllRunStatus(true, false, false, null);
+
+        return ObserveAsync(operation);
+    }
+
+    private async Task ObserveAsync(Func<Task> operation)
+    {
+        try
+        {
+            await operation();
+            lock (_syncRoot)
+                _status = new ProcessAllRunStatus(false, true, false, null);
+        }
+        catch (Exception exception)
+        {
+            lock (_syncRoot)
+                _status = new ProcessAllRunStatus(false, false, true, exception.Message);
+        }
+    }
+}
+
 public class McpToolsProvider
 {
     private readonly IServiceScopeFactory _scopeFactory;

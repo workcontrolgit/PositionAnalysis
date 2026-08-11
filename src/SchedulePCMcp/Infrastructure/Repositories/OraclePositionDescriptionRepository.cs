@@ -196,6 +196,27 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
         return results;
     }
 
+    public async Task<List<string>> GetHumanSchedulePcPdNumbersAsync()
+    {
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            SELECT header.pd_nbr
+            FROM temp_pd_sched_pc header
+            WHERE header.schedule_pc_ind = 'Y'
+            ORDER BY header.pd_nbr";
+
+        using var cmd = new OracleCommand(sql, connection) { CommandTimeout = _settings.CommandTimeout };
+
+        var pdNumbers = new List<string>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            pdNumbers.Add(reader.GetString(0));
+
+        return pdNumbers;
+    }
+
     private async Task<List<string>> GetAllPdNbrsAsync(OracleConnection connection)
     {
         var sql = $"SELECT DISTINCT header.pd_nbr FROM temp_pd_sched_pc header WHERE {EligibleDutiesExistsPredicate} ORDER BY header.pd_nbr";

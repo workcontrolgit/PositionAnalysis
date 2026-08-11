@@ -240,18 +240,70 @@ Be objective and ground every finding in specific language from the duties text.
     /// </summary>
     public async Task ScoreAllAsync()
     {
-        var counts = await _evalRepository.GetSeriesCountsAsync();
-        var allSeries = counts.Select(c => c.Series).ToList();
+        var workerId = $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
+        const int leaseMinutes = 15;
 
-        if (allSeries.Count == 0)
+        var recoveredCount = await _evalRepository.RecoverExpiredClaimsAsync();
+        _logger.LogInformation("ScoreAllAsync worker {WorkerId} recovered {RecoveredCount} expired claims", workerId, recoveredCount);
+
+        while (await _evalRepository.ClaimNextPendingAsync(workerId, TimeSpan.FromMinutes(leaseMinutes)) is { } claimedResult)
         {
-            _logger.LogWarning("ScoreAllAsync: no staged series found");
-            return;
+            await ScoreClaimedPdAsync(claimedResult, workerId);
         }
 
-        _logger.LogInformation("ScoreAllAsync: scoring all {Count} staged series", allSeries.Count);
-        await ScoreBySeriesAsync(allSeries);
+        _logger.LogInformation("ScoreAllAsync worker {WorkerId} found no more pending claims", workerId);
     }
+
+    private async Task ScoreClaimedPdAsync(EvaluationResult claimedResult, string workerId)
+    {
+        EvaluationResult completedResult;
+
+        try
+        {
+            var pd = await _pdRepository.GetByPdNbrAsync(claimedResult.PdNbr);
+            if (pd is null)
+            {
+                completedResult = CreateFailedClaimResult(claimedResult, "PD not found");
+            }
+            else
+            {
+                var aiResult = await _aiClient.CompleteAsync(GenerateEvaluationPrompt(pd), SystemPrompt);
+                completedResult = aiResult.IsSuccess
+                    ? ParseLlmResponse(pd, aiResult.Content)
+                    : CreateFailedClaimResult(claimedResult, $"AI error: {aiResult.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error scoring claimed PD {PdNbr}", claimedResult.PdNbr);
+            completedResult = CreateFailedClaimResult(claimedResult, $"Unexpected error: {ex.Message}");
+        }
+
+        try
+        {
+            if (!await _evalRepository.CompleteClaimAsync(completedResult, workerId))
+            {
+                _logger.LogWarning("Lost or expired claim for PD {PdNbr}; completion was not applied", claimedResult.PdNbr);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to complete claimed PD {PdNbr}; continuing worker loop", claimedResult.PdNbr);
+        }
+    }
+
+    private static EvaluationResult CreateFailedClaimResult(EvaluationResult claimedResult, string errorMessage) => new()
+    {
+        PdSeqNum = claimedResult.PdSeqNum,
+        PdNbr = claimedResult.PdNbr,
+        Series = claimedResult.Series,
+        Grade = claimedResult.Grade,
+        Rating = "FAILED",
+        JustificationSummary = errorMessage,
+        OverallScore = 0,
+        EvaluatedDate = DateTime.Now,
+        EvaluatedBy = "LLM"
+    };
 
     /// <summary>
     /// Retrieves the evaluation result for a specific PD

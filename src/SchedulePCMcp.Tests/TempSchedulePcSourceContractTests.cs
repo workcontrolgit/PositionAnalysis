@@ -33,6 +33,17 @@ public class TempSchedulePcSourceContractTests
     }
 
     [Fact]
+    public void GetHumanSchedulePcPdNumbersAsync_UsesHumanFlaggedTempHeadersInPdNumberOrder()
+    {
+        var source = File.ReadAllText(FindRepositorySourceFile());
+
+        Assert.Contains("GetHumanSchedulePcPdNumbersAsync", source);
+        Assert.Contains("FROM temp_pd_sched_pc header", source, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("header.schedule_pc_ind = 'Y'", source, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ORDER BY header.pd_nbr", source, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BulkStagingProcedureUsesFilteredTempHeadersAndReportsDutylessExclusions()
     {
         var procedurePath = FindBulkStagingProcedureFile();

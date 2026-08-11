@@ -34,6 +34,7 @@ public class StagingOrchestratorTests
         public Task<List<PositionDescription>> GetBySeriesAsync(OccupationalSeries series) => Task.FromResult(new List<PositionDescription>());
         public Task<List<PositionDescription>> GetByGradeRangeAsync(Grade minGrade, Grade maxGrade) => Task.FromResult(new List<PositionDescription>());
         public Task<List<PositionDescription>> GetByFilterAsync(StagingFilter filter) => Task.FromResult(new List<PositionDescription>());
+        public Task<List<string>> GetHumanSchedulePcPdNumbersAsync() => Task.FromResult(new List<string>());
     }
 
     private sealed class RecordingEvaluationRepository : ISchedulePCEvalRepository
@@ -65,5 +66,9 @@ public class StagingOrchestratorTests
         public Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
         public Task<int> GetCountByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
         public Task<int> ResetFailedAsync() => throw new NotSupportedException();
+        public Task<int> RecoverExpiredClaimsAsync() => throw new NotSupportedException();
+        public Task<EvaluationResult?> ClaimNextPendingAsync(string workerId, TimeSpan leaseDuration) => throw new NotSupportedException();
+        public Task<bool> CompleteClaimAsync(EvaluationResult result, string workerId) => throw new NotSupportedException();
+        public Task<QueueStatus> GetQueueStatusAsync() => throw new NotSupportedException();
     }
 }

@@ -79,7 +79,7 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
     // -------------------------------------------------------------------------
     // SDT ordinal map (v2 template, document order, 0-based):
     //  [0]  PD Number          [1]  Effective Date      [2]  Position Title
-    //  [3]  Rating (Section 1) [4]  Agency/OrgCode      [5]  Pay Plan/Series/Grade
+    //  [3]  Rating (Section 1) [4]  Org Code            [5]  Pay Plan/Series/Grade
     //  [6]  Service Category   [7]  Position Purpose
     //  [8]  CB Policy-Determining Yes   [9]  No   [10] Evidence
     //  [11] CB Policy-Making Yes        [12] No   [13] Evidence
@@ -88,7 +88,8 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
     //  [20-21] reserved
     //  [22] CB Final — Convert          [23] CB Final — Retain
     //  [24] Rating (Section 3)  [25] Justification  [26] Evaluator  [27] Agency Head
-    //  [28-39] Appendix A       [40-41] Appendix B template row
+    //  [28-31] Appendix A: PD Nbr, Title, Org Name, Org Code
+    //  [32-39] Appendix A cont.  [40-41] Appendix B template row
     // -------------------------------------------------------------------------
 
     private void FillDocument(
@@ -105,7 +106,8 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         SetSdtText(allSdts, nsm, 1, evalDate);
         SetSdtText(allSdts, nsm, 2, pd.Title);
         SetRatingCell(doc, nsm, allSdts, 3, ratingLabel, ratingBg, ratingFg);
-        SetSdtText(allSdts, nsm, 4, pd.OrganizationCode);
+        // PD_ORIGIN_ORG_CODE is frequently null in the source data; fall back to the org name so the field isn't blank.
+        SetSdtText(allSdts, nsm, 4, string.IsNullOrWhiteSpace(pd.OrganizationCode) ? pd.OrganizationName : pd.OrganizationCode);
         SetSdtText(allSdts, nsm, 5, $"{pd.PayPlan}-{pd.Series}-{pd.Grade}");
         SetSdtText(allSdts, nsm, 6, "Competitive");
         SetSdtText(allSdts, nsm, 7, pd.IntroText);
@@ -141,7 +143,7 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         // Appendix A
         SetSdtText(allSdts, nsm, 28, result.PdNbr);
         SetSdtText(allSdts, nsm, 29, pd.Title);
-        SetSdtText(allSdts, nsm, 30, pd.OrganizationCode);
+        SetSdtText(allSdts, nsm, 30, pd.OrganizationName);
         SetSdtText(allSdts, nsm, 31, pd.OrganizationCode);
         SetSdtText(allSdts, nsm, 32, "GS");
         SetSdtText(allSdts, nsm, 33, pd.Series.ToString());
