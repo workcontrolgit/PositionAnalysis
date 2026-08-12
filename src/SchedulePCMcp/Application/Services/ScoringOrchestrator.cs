@@ -335,7 +335,7 @@ Be objective and ground every finding in specific language from the duties text.
     private string GenerateEvaluationPrompt(PositionDescription pd)
     {
         var dutiesSummary = string.Join("\n", pd.Duties.Select(d =>
-            $"- {d.Text} ({d.PercentTimeAllotted}% of time){(d.IsCritical ? " [CRITICAL]" : "")}"));
+            $"- Duty {d.SequenceNumber}: {d.Text} ({d.PercentTimeAllotted}% of time){(d.IsCritical ? " [CRITICAL]" : "")}"));
 
         return $@"Evaluate this federal position description against the four Schedule PC criteria:
 
@@ -356,26 +356,31 @@ Return ONLY valid JSON in exactly this structure — no markdown fences, no addi
   ""rating"": ""HIGH"" | ""MEDIUM"" | ""LOW"" | ""DOES_NOT_MEET"",
   ""justification"": ""<one-paragraph overall justification>"",
   ""isCandidate"": true | false,
+  ""positionPurpose"": ""<1-2 objective sentences summarizing the position's overarching purpose, based on both the introduction and the major duties>"",
   ""criteria"": [
     {{
       ""name"": ""Policy-Determining"",
       ""triggered"": true | false,
-      ""evidence"": ""<specific duty language supporting the finding>""
+      ""evidence"": ""<specific duty language supporting the finding>"",
+      ""supportingDutyNumbers"": [<Duty number(s) above that this finding is based on>]
     }},
     {{
       ""name"": ""Policy-Making"",
       ""triggered"": true | false,
-      ""evidence"": ""<specific duty language>""
+      ""evidence"": ""<specific duty language>"",
+      ""supportingDutyNumbers"": [<Duty number(s) above that this finding is based on>]
     }},
     {{
       ""name"": ""Policy-Advocating"",
       ""triggered"": true | false,
-      ""evidence"": ""<specific duty language>""
+      ""evidence"": ""<specific duty language>"",
+      ""supportingDutyNumbers"": [<Duty number(s) above that this finding is based on>]
     }},
     {{
       ""name"": ""Confidential"",
       ""triggered"": true | false,
-      ""evidence"": ""<specific duty language>""
+      ""evidence"": ""<specific duty language>"",
+      ""supportingDutyNumbers"": [<Duty number(s) above that this finding is based on>]
     }}
   ]
 }}
@@ -384,7 +389,11 @@ Schedule PC Criterion definitions:
 - Policy-Determining: Position has authority to establish or set agency policy with significant discretion.
 - Policy-Making: Position participates substantively in developing or formulating policy proposals.
 - Policy-Advocating: Position represents the agency in advocating for policy positions to external parties.
-- Confidential: Position requires a close confidential working relationship with a Schedule PC official.";
+- Confidential: Position requires a close confidential working relationship with a Schedule PC official.
+
+Only list a duty number in supportingDutyNumbers if that specific duty's text actually supports the finding — do not list duties (e.g. ""other duties as assigned"") that provide no relevant evidence. Use an empty array if triggered is false.
+
+positionPurpose must be descriptive, not evaluative, and should synthesize both the INTRODUCTION and MAJOR DUTIES sections above — do not just restate the introduction.";
     }
 
     private static string StripMarkdownFences(string response)
@@ -442,6 +451,11 @@ Schedule PC Criterion definitions:
                 evaluationResult.JustificationSummary = justElement.GetString() ?? "";
             }
 
+            if (root.TryGetProperty("positionPurpose", out var purposeElement) && purposeElement.ValueKind == JsonValueKind.String)
+            {
+                evaluationResult.PositionPurpose = purposeElement.GetString() ?? "";
+            }
+
             if (root.TryGetProperty("criteria", out var criteriaElement) && criteriaElement.ValueKind == JsonValueKind.Array)
             {
                 foreach (var criterion in criteriaElement.EnumerateArray())
@@ -461,6 +475,15 @@ Schedule PC Criterion definitions:
 
                     if (criterion.TryGetProperty("evidence", out var evidenceEl) && evidenceEl.ValueKind == JsonValueKind.String)
                         cs.Evidence = evidenceEl.GetString() ?? "";
+
+                    if (criterion.TryGetProperty("supportingDutyNumbers", out var dutyNumsEl) && dutyNumsEl.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var dutyNumEl in dutyNumsEl.EnumerateArray())
+                        {
+                            if (dutyNumEl.TryGetInt32(out var dutyNum))
+                                cs.SupportingDutyNumbers.Add(dutyNum);
+                        }
+                    }
 
                     evaluationResult.CriteriaScores.Add(cs);
                 }

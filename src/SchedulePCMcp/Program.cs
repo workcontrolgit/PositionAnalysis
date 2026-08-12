@@ -133,9 +133,18 @@ public class Program
                 services.AddScoped<IMcpToolHandler, ProcessPdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessAllPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusToolHandler>();
+                services.AddScoped<IMcpToolHandler, GetProcessingStatusBySeriesToolHandler>();
+                services.AddScoped<IMcpToolHandler, GetProcessingStatusByOrgsToolHandler>();
+                services.AddScoped<IMcpToolHandler, GetProcessingStatusByPdToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetQueueStatusToolHandler>();
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsToolHandler>();
+                services.AddScoped<IMcpToolHandler, GenerateDocumentsBySeriesToolHandler>();
+                services.AddScoped<IMcpToolHandler, GenerateDocumentsByOrgsToolHandler>();
+                services.AddScoped<IMcpToolHandler, GenerateDocumentsByPdToolHandler>();
                 services.AddScoped<IMcpToolHandler, ExportResultsToolHandler>();
+                services.AddScoped<IMcpToolHandler, ExportResultsBySeriesToolHandler>();
+                services.AddScoped<IMcpToolHandler, ExportResultsByOrgsToolHandler>();
+                services.AddScoped<IMcpToolHandler, ExportResultsByPdToolHandler>();
                 services.AddSingleton<McpToolsProvider>();
 
                 // MCP Stdio Host

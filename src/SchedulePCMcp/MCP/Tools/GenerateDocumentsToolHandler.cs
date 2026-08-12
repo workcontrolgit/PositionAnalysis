@@ -14,32 +14,17 @@ public class GenerateDocumentsToolHandler : IMcpToolHandler
 
     public string Name => "generate_documents";
 
-    public string Description => "Generate Word evaluation documents for all or selected series";
+    public string Description => "Generate Word evaluation documents for all completed evaluations";
 
     public object InputSchema => new
     {
         type = "object",
-        properties = new
-        {
-            series = new
-            {
-                type = "array",
-                items = new { type = "string" }
-            }
-        }
+        properties = new { }
     };
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var series = arguments.GetStringList("series");
-        if (series.Count == 0)
-        {
-            await _documentGenerationOrchestrator.GenerateAllAsync();
-        }
-        else
-        {
-            await _documentGenerationOrchestrator.GenerateBySeriesAsync(series);
-        }
+        await _documentGenerationOrchestrator.GenerateAllAsync();
 
         var generated = await _documentGenerationOrchestrator.GetGenerationProgressAsync();
 

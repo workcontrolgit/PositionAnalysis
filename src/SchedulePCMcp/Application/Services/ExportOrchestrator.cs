@@ -83,6 +83,77 @@ public class ExportOrchestrator : IExportOrchestrator
         await ExportAsync(dedupedResults, fileName);
     }
 
+    public async Task ExportByPdNumbersAsync(IEnumerable<string> pdNumbers)
+    {
+        if (pdNumbers == null)
+            throw new ArgumentNullException(nameof(pdNumbers));
+
+        var pdNbrList = pdNumbers
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (pdNbrList.Count == 0)
+        {
+            _logger.LogInformation("No PD numbers provided; skipping export");
+            return;
+        }
+
+        var results = new List<EvaluationResult>();
+        foreach (var pdNbr in pdNbrList)
+        {
+            var result = await _evalRepository.GetByPdAsync(pdNbr);
+            if (result == null)
+            {
+                _logger.LogWarning("No evaluation result found for PD {PdNbr}; skipping", pdNbr);
+                continue;
+            }
+
+            results.Add(result);
+        }
+
+        var fileName = $"SchedulePC-Eval-Tracker-{DateTime.Now:yyyy-MM-dd}.xlsx";
+        await ExportAsync(results, fileName);
+    }
+
+    public async Task ExportByOrgCodesAsync(IEnumerable<string> orgCodes)
+    {
+        if (orgCodes == null)
+            throw new ArgumentNullException(nameof(orgCodes));
+
+        var orgCodeList = orgCodes
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (orgCodeList.Count == 0)
+        {
+            _logger.LogInformation("No org codes provided; skipping export");
+            return;
+        }
+
+        var allResults = await _evalRepository.GetAllAsync();
+        var results = new List<EvaluationResult>();
+
+        foreach (var result in allResults)
+        {
+            var pd = await _positionDescriptionRepository.GetByPdNbrAsync(result.PdNbr);
+            if (pd == null) continue;
+
+            var matches = orgCodeList.Any(code =>
+                string.Equals(pd.OrganizationCode, code, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pd.BureauCode, code, StringComparison.OrdinalIgnoreCase));
+
+            if (matches)
+                results.Add(result);
+        }
+
+        var fileName = $"SchedulePC-Eval-Tracker-{DateTime.Now:yyyy-MM-dd}.xlsx";
+        await ExportAsync(results, fileName);
+    }
+
     public async Task<(int Total, int Exported)> GetExportStatusAsync()
     {
         var allResults = await _evalRepository.GetAllAsync();

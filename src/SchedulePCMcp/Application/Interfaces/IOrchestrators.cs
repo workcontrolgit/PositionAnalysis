@@ -18,6 +18,9 @@ public interface IReportingService
 {
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync();
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportAsync();
+    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportBySeriesAsync(IEnumerable<string> series);
+    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportByOrgCodesAsync(IEnumerable<string> orgCodes);
+    Task<List<PdProcessingStatus>> GetProcessingStatusByPdNumbersAsync(IEnumerable<string> pdNumbers);
 }
 
 /// <summary>
@@ -68,4 +71,7 @@ public interface IProcessingStatusService
 {
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusAsync();
     Task<SeriesStatus?> GetStatusBySeriesAsync(OccupationalSeries series);
+    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusBySeriesAsync(IEnumerable<string> series);
+    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusByOrgCodesAsync(IEnumerable<string> orgCodes);
+    Task<List<PdProcessingStatus>> GetStatusByPdNumbersAsync(IEnumerable<string> pdNumbers);
 }

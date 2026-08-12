@@ -18,6 +18,7 @@ public class EvaluationResult
     
     public List<CriterionScore> CriteriaScores { get; set; } = new();
     public string JustificationSummary { get; set; } = string.Empty;
+    public string PositionPurpose { get; set; } = string.Empty;
     public string RawLlmResponse { get; set; } = string.Empty;
     
     public DateTime EvaluatedDate { get; set; }
@@ -35,6 +36,7 @@ public class CriterionScore
     public string CriterionName { get; set; } = string.Empty;
     public bool Triggered { get; set; }
     public string Evidence { get; set; } = string.Empty;
+    public List<int> SupportingDutyNumbers { get; set; } = new();
 
     public override string ToString() => $"{CriterionName}: {(Triggered ? "Triggered" : "Not triggered")}";
 }

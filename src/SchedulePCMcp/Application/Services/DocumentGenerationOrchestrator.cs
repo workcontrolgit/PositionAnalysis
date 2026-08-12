@@ -111,6 +111,105 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
             succeeded, failed);
     }
 
+    public async Task GenerateByPdNumbersAsync(IEnumerable<string> pdNumbers)
+    {
+        if (pdNumbers == null)
+            throw new ArgumentNullException(nameof(pdNumbers));
+
+        var pdNbrList = pdNumbers
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (pdNbrList.Count == 0)
+        {
+            _logger.LogInformation("No PD numbers provided; nothing to generate");
+            return;
+        }
+
+        _logger.LogInformation("Starting Word generation for {PdCount} requested PD number(s)", pdNbrList.Count);
+
+        var selectedResults = new List<EvaluationResult>();
+        foreach (var pdNbr in pdNbrList)
+        {
+            var result = await _evalRepository.GetByPdAsync(pdNbr);
+            if (result == null)
+            {
+                _logger.LogWarning("No evaluation result found for PD {PdNbr}; skipping", pdNbr);
+                continue;
+            }
+
+            if (!IsCompletedResult(result))
+            {
+                _logger.LogWarning("Evaluation result for PD {PdNbr} is not complete (rating {Rating}); skipping", pdNbr, result.Rating);
+                continue;
+            }
+
+            selectedResults.Add(result);
+        }
+
+        if (selectedResults.Count == 0)
+        {
+            _logger.LogInformation("No completed results found for requested PD numbers");
+            return;
+        }
+
+        var (succeeded, failed) = await GenerateInternalAsync(selectedResults);
+
+        _logger.LogInformation(
+            "Generated {Count} Word documents for requested PD numbers ({Failed} failed)",
+            succeeded, failed);
+    }
+
+    public async Task GenerateByOrgCodesAsync(IEnumerable<string> orgCodes)
+    {
+        if (orgCodes == null)
+            throw new ArgumentNullException(nameof(orgCodes));
+
+        var orgCodeList = orgCodes
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (orgCodeList.Count == 0)
+        {
+            _logger.LogInformation("No org codes provided; nothing to generate");
+            return;
+        }
+
+        _logger.LogInformation("Starting Word generation for {OrgCodeCount} requested org code(s)", orgCodeList.Count);
+
+        var completedResults = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);
+        var selectedResults = new List<EvaluationResult>();
+
+        foreach (var result in completedResults)
+        {
+            var pd = await _pdRepository.GetByPdNbrAsync(result.PdNbr);
+            if (pd == null) continue;
+
+            var matches = orgCodeList.Any(code =>
+                string.Equals(pd.OrganizationCode, code, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pd.BureauCode, code, StringComparison.OrdinalIgnoreCase));
+
+            if (matches)
+                selectedResults.Add(result);
+        }
+
+        if (selectedResults.Count == 0)
+        {
+            _logger.LogInformation("No completed results found for requested org codes");
+            return;
+        }
+
+        var (succeeded, failed) = await GenerateInternalAsync(selectedResults);
+
+        _logger.LogInformation(
+            "Generated {Count} Word documents for requested org codes ({Failed} failed)",
+            succeeded, failed);
+    }
+
     public async Task<int> GetGenerationProgressAsync()
     {
         var completedResults = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);

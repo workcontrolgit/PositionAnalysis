@@ -112,7 +112,8 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         SetSdtText(allSdts, nsm, 4, bureauOrgDisplay);
         SetSdtText(allSdts, nsm, 5, $"{pd.PayPlan}-{pd.Series}-{pd.Grade}");
         SetSdtText(allSdts, nsm, 6, "Competitive");
-        SetSdtText(allSdts, nsm, 7, pd.IntroText);
+        // Fall back to the raw PD intro for results scored before positionPurpose was captured.
+        SetSdtText(allSdts, nsm, 7, string.IsNullOrWhiteSpace(result.PositionPurpose) ? pd.IntroText : result.PositionPurpose);
 
 
         // Section 2: 4 criteria in fixed order
@@ -345,11 +346,12 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
             var dutyText  = string.IsNullOrWhiteSpace(duty.Text) ? "(duty text not provided)" : duty.Text;
             var dutyLabel = $"Duty #{duty.SequenceNumber}: {dutyText}";
 
-            // Attribute each triggered criterion to this duty only if its evidence quote actually
-            // comes from this duty's own text, so unrelated duties (e.g. "other duties as assigned")
-            // don't inherit support findings from a different duty.
+            // Prefer the LLM's own duty-number attribution; fall back to evidence-text matching for
+            // results scored before supportingDutyNumbers was captured.
             var supportingCriteria = result.CriteriaScores
-                .Where(c => c.Triggered && DutySupportsCriterion(dutyText, c.Evidence))
+                .Where(c => c.Triggered && (c.SupportingDutyNumbers.Count > 0
+                    ? c.SupportingDutyNumbers.Contains(duty.SequenceNumber)
+                    : DutySupportsCriterion(dutyText, c.Evidence)))
                 .Select(c => c.CriterionName)
                 .ToList();
             var metaText  = supportingCriteria.Count > 0
