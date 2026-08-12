@@ -17,7 +17,7 @@ public class GenerateDocumentsBySeriesToolHandler : IMcpToolHandler
 
     public string Name => "generate_documents_by_series";
 
-    public string Description => "Generate Word evaluation documents for completed evaluations in the specified occupational series";
+    public string Description => "Generate Word evaluation documents filtered to ONLY completed evaluations in the given occupational series (not all series). Use this whenever the user names one or more specific series.";
 
     public object InputSchema => new
     {

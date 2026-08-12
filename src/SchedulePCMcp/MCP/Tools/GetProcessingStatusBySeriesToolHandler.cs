@@ -17,7 +17,7 @@ public class GetProcessingStatusBySeriesToolHandler : IMcpToolHandler
 
     public string Name => "get_processing_status_by_series";
 
-    public string Description => "Get processing progress for the specified occupational series";
+    public string Description => "Get processing progress filtered to ONLY the given occupational series codes (not all series). Use this whenever the user names one or more specific series.";
 
     public object InputSchema => new
     {

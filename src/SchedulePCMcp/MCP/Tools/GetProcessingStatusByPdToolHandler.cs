@@ -17,7 +17,7 @@ public class GetProcessingStatusByPdToolHandler : IMcpToolHandler
 
     public string Name => "get_processing_status_by_pd";
 
-    public string Description => "Get processing status for the specified PD numbers";
+    public string Description => "Get processing status filtered to ONLY the given PD numbers (not all series). Use this whenever the user names one or more specific PD numbers.";
 
     public object InputSchema => new
     {

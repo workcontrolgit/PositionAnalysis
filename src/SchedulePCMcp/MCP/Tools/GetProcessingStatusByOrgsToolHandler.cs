@@ -17,7 +17,7 @@ public class GetProcessingStatusByOrgsToolHandler : IMcpToolHandler
 
     public string Name => "get_processing_status_by_orgs";
 
-    public string Description => "Get processing progress for evaluations matching the specified bureau or org codes";
+    public string Description => "Get processing progress filtered to ONLY evaluations matching the given bureau/org codes (not all series). Use this whenever the user names one or more specific org/bureau codes.";
 
     public object InputSchema => new
     {

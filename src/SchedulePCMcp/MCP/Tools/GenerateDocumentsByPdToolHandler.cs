@@ -17,7 +17,7 @@ public class GenerateDocumentsByPdToolHandler : IMcpToolHandler
 
     public string Name => "generate_documents_by_pd";
 
-    public string Description => "Generate Word evaluation documents for the specified PD numbers";
+    public string Description => "Generate Word evaluation documents filtered to ONLY the given PD numbers (not all series). Use this whenever the user names one or more specific PD numbers.";
 
     public object InputSchema => new
     {

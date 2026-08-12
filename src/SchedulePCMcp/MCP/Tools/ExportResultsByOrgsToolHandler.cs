@@ -17,7 +17,7 @@ public class ExportResultsByOrgsToolHandler : IMcpToolHandler
 
     public string Name => "export_results_by_orgs";
 
-    public string Description => "Export evaluation results to Excel for PDs matching the specified bureau or org codes";
+    public string Description => "Export evaluation results to Excel filtered to ONLY PDs matching the given bureau/org codes (not all series). Use this whenever the user names one or more specific org/bureau codes.";
 
     public object InputSchema => new
     {
