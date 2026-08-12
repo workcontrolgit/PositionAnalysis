@@ -422,7 +422,8 @@ Schedule PC Criterion definitions:
 
         try
         {
-            using var doc = JsonDocument.Parse(llmResponse);
+            // LLM output sometimes includes trailing commas; tolerate them.
+            using var doc = JsonDocument.Parse(llmResponse, new JsonDocumentOptions { AllowTrailingCommas = true });
             var root = doc.RootElement;
 
             if (root.TryGetProperty("score", out var scoreElement) && scoreElement.TryGetDecimal(out var score))
