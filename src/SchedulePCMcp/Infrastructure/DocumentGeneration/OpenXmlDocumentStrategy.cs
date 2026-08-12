@@ -151,18 +151,53 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         SetSdtText(allSdts, nsm, 29, pd.Title);
         SetSdtText(allSdts, nsm, 30, orgName);
         SetSdtText(allSdts, nsm, 31, orgCode);
-        SetSdtText(allSdts, nsm, 32, "GS");
+        SetSdtText(allSdts, nsm, 32, pd.PayPlan);
         SetSdtText(allSdts, nsm, 33, pd.Series.ToString());
         SetSdtText(allSdts, nsm, 34, pd.Grade.ToString());
         SetSdtText(allSdts, nsm, 35, evalDate);
-        SetSdtText(allSdts, nsm, 36, "(not provided)");
-        SetSdtText(allSdts, nsm, 37, "(not provided)");
-        SetSdtText(allSdts, nsm, 38, "(not provided)");
+        SetSdtText(allSdts, nsm, 36, FormatCodeWithLabel(pd.ManagerLevel, GetManagerLevelLabel(pd.ManagerLevel)));
+        SetSdtText(allSdts, nsm, 37, FormatCodeWithLabel(pd.PositionSensitivity, GetSensitivityLabel(pd.PositionSensitivity)));
+        SetSdtText(allSdts, nsm, 38, FormatCodeWithLabel(pd.PublicTrust, GetPublicTrustLabel(pd.PublicTrust)));
         SetSdtText(allSdts, nsm, 39, "Competitive");
 
         // Appendix B
         FillAppendixB(doc, nsm, allSdts, pd, result);
     }
+
+    private static string FormatCodeWithLabel(string? code, string label)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return "(not provided)";
+        return string.IsNullOrEmpty(label) ? code : $"{code} ({label})";
+    }
+
+    private static string GetManagerLevelLabel(string? code) => code switch
+    {
+        "2" => "Supervisor or Manager",
+        "4" => "Supervisor (CSRA)",
+        "5" => "Management Official (CSRA)",
+        "6" => "Leader",
+        "7" => "Team Leader",
+        "8" => "All Other Positions",
+        _ => string.Empty
+    };
+
+    private static string GetSensitivityLabel(string? code) => code switch
+    {
+        "1" => "Non-Sensitive",
+        "2" => "Non-Critical Sensitive",
+        "3" => "Critical Sensitive",
+        "4" => "Special Sensitive",
+        _ => string.Empty
+    };
+
+    private static string GetPublicTrustLabel(string? code) => code switch
+    {
+        "9" => "High Risk",
+        "10" => "Mod Risk",
+        "11" => "Low Risk",
+        "99" => "No Risk",
+        _ => string.Empty
+    };
 
     private static void SetSdtText(
         XmlNode[] allSdts, XmlNamespaceManager nsm, int index, string value)
