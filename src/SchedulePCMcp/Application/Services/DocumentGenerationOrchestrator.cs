@@ -42,7 +42,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         _documentSettings = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     }
 
-    public async Task GenerateAllAsync()
+    public async Task<(int Succeeded, int Failed)> GenerateAllAsync()
     {
         _logger.LogInformation("Starting Word generation for all completed evaluations");
 
@@ -51,15 +51,16 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         if (completedResults.Count == 0)
         {
             _logger.LogInformation("No completed results found; nothing to generate");
-            return;
+            return (0, 0);
         }
 
         var (succeeded, failed) = await GenerateInternalAsync(completedResults);
 
         _logger.LogInformation("Generated {Count} Word documents ({Failed} failed)", succeeded, failed);
+        return (succeeded, failed);
     }
 
-    public async Task GenerateBySeriesAsync(IEnumerable<string> series)
+    public async Task<(int Succeeded, int Failed)> GenerateBySeriesAsync(IEnumerable<string> series)
     {
         if (series == null)
             throw new ArgumentNullException(nameof(series));
@@ -73,7 +74,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         if (seriesList.Count == 0)
         {
             _logger.LogInformation("No series provided; nothing to generate");
-            return;
+            return (0, 0);
         }
 
         _logger.LogInformation("Starting Word generation across {SeriesCount} series", seriesList.Count);
@@ -101,7 +102,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         if (dedupedResults.Count == 0)
         {
             _logger.LogInformation("No completed results found in requested series");
-            return;
+            return (0, 0);
         }
 
         var (succeeded, failed) = await GenerateInternalAsync(dedupedResults);
@@ -109,9 +110,10 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         _logger.LogInformation(
             "Generated {Count} Word documents in selected series ({Failed} failed)",
             succeeded, failed);
+        return (succeeded, failed);
     }
 
-    public async Task GenerateByPdNumbersAsync(IEnumerable<string> pdNumbers)
+    public async Task<(int Succeeded, int Failed)> GenerateByPdNumbersAsync(IEnumerable<string> pdNumbers)
     {
         if (pdNumbers == null)
             throw new ArgumentNullException(nameof(pdNumbers));
@@ -125,7 +127,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         if (pdNbrList.Count == 0)
         {
             _logger.LogInformation("No PD numbers provided; nothing to generate");
-            return;
+            return (0, 0);
         }
 
         _logger.LogInformation("Starting Word generation for {PdCount} requested PD number(s)", pdNbrList.Count);
@@ -152,7 +154,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         if (selectedResults.Count == 0)
         {
             _logger.LogInformation("No completed results found for requested PD numbers");
-            return;
+            return (0, 0);
         }
 
         var (succeeded, failed) = await GenerateInternalAsync(selectedResults);
@@ -160,9 +162,10 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         _logger.LogInformation(
             "Generated {Count} Word documents for requested PD numbers ({Failed} failed)",
             succeeded, failed);
+        return (succeeded, failed);
     }
 
-    public async Task GenerateByOrgCodesAsync(IEnumerable<string> orgCodes)
+    public async Task<(int Succeeded, int Failed)> GenerateByOrgCodesAsync(IEnumerable<string> orgCodes)
     {
         if (orgCodes == null)
             throw new ArgumentNullException(nameof(orgCodes));
@@ -176,7 +179,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         if (orgCodeList.Count == 0)
         {
             _logger.LogInformation("No org codes provided; nothing to generate");
-            return;
+            return (0, 0);
         }
 
         _logger.LogInformation("Starting Word generation for {OrgCodeCount} requested org code(s)", orgCodeList.Count);
@@ -200,7 +203,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         if (selectedResults.Count == 0)
         {
             _logger.LogInformation("No completed results found for requested org codes");
-            return;
+            return (0, 0);
         }
 
         var (succeeded, failed) = await GenerateInternalAsync(selectedResults);
@@ -208,6 +211,7 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         _logger.LogInformation(
             "Generated {Count} Word documents for requested org codes ({Failed} failed)",
             succeeded, failed);
+        return (succeeded, failed);
     }
 
     public async Task<int> GetGenerationProgressAsync()

@@ -24,13 +24,12 @@ public class GenerateDocumentsToolHandler : IMcpToolHandler
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        await _documentGenerationOrchestrator.GenerateAllAsync();
-
-        var generated = await _documentGenerationOrchestrator.GetGenerationProgressAsync();
+        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateAllAsync();
 
         return new
         {
-            generated
+            generated = succeeded,
+            failed
         };
     }
 }

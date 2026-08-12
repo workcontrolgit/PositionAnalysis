@@ -40,13 +40,12 @@ public class GenerateDocumentsBySeriesToolHandler : IMcpToolHandler
         if (series.Count == 0)
             return new { error = "Missing required parameter: series (array of series codes)" };
 
-        await _documentGenerationOrchestrator.GenerateBySeriesAsync(series);
-
-        var generated = await _documentGenerationOrchestrator.GetGenerationProgressAsync();
+        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateBySeriesAsync(series);
 
         return new
         {
-            generated
+            generated = succeeded,
+            failed
         };
     }
 }
