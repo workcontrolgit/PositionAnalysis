@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../SchedulePCMcp/SchedulePCMcp.csproj" />
+  <Project Path="SchedulePC.csproj" />
+</Solution>
