@@ -23,7 +23,7 @@ fills the template's SDT (content control) fields by ordinal position, in docume
 | SDT # | Field | Source | Origin |
 |---|---|---|---|
 | 0 | PD Number | Backend | `EvaluationResult.PdNbr` ← `TEMP_PD_SCHED_PC.PD_NBR` |
-| 1 | Effective Date | Backend | `EvaluationResult.EvaluatedDate` (evaluation run date, **not** the PD's effective date — see Appendix A #35 for `PD_EFFECTIVE_DATE`) |
+| 1 | Evaluation Date | Backend | `EvaluationResult.EvaluatedDate` (evaluation run date, **not** the PD's effective date — see Appendix A #35 for `PD_EFFECTIVE_DATE`) |
 | 2 | Position Title | Backend | `TEMP_PD_SCHED_PC.PD_POSITION_TITLE_TEXT` |
 | 3 | Schedule PC Rating | LLM | `EvaluationResult.Rating` + `CriteriaScores` triggered count (`"{Rating} -- {N} of 4 criteria met"`) |
 | 4 | Bureau/Org Code | Derived | `(BUREAU_CODE) BUREAU_DESC / (PD_ORIGIN_ORG_CODE) ORG_DESC`, from `TEMP_PD_SCHED_PC.BUREAU_CODE`/`BUREAU_DESC` and `PD_ORIGIN_ORG_CODE`/`ORG_DESC` |

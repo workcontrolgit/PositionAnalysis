@@ -10,17 +10,18 @@ $pds = @(
 "S09089","S15071","S15072","X00355","S15686","D13144","S11853","S17397","D07798","S08562"
 )
 
-$src = "C:\Users\NguyenFD\source\repos\oracle-sqlcl-ai-skills\src\SchedulePCMcp\reports\schedule-pc\form-word"
-$dst = "C:\Users\NguyenFD\source\repos\oracle-sqlcl-ai-skills\src\SchedulePCMcp\reports\schedule-pc\artifacts"
+$src = Join-Path $PSScriptRoot "..\src\PositionAnalysis.Mcp\reports\schedule-pc\form-word"
+$dst = Join-Path $PSScriptRoot "..\src\PositionAnalysis.Mcp\reports\schedule-pc\artifacts"
+
+if (-not (Test-Path $dst)) {
+    New-Item -Path $dst -ItemType Directory -Force | Out-Null
+}
 
 $found = @()
 $missing = @()
 
 foreach ($pd in $pds) {
-    $matches = Get-ChildItem -Path $src -Filter "PD-$pd_*.docx" -ErrorAction SilentlyContinue
-    if (-not $matches) {
-        $matches = Get-ChildItem -Path $src -Filter ("PD-{0}_*.docx" -f $pd) -ErrorAction SilentlyContinue
-    }
+    $matches = Get-ChildItem -Path $src -Filter ("PD-{0}_*.docx" -f $pd) -ErrorAction SilentlyContinue
     if ($matches) {
         foreach ($m in $matches) {
             Copy-Item -Path $m.FullName -Destination $dst -Force
