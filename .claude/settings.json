@@ -1,4 +1,18 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(powershell.exe -Command ':*)",
+      "Bash(git -C /c/apps/PositionAnalysis/.claude/worktrees/agent-ac4dbdf5 mv src/SchedulePCMcp src/PositionAnalysis.Mcp)",
+      "Bash(powershell.exe -Command \"whoami\")",
+      "Bash(git -C /c/apps/PositionAnalysis/.claude/worktrees/agent-ac4dbdf5 show HEAD:src/schedulepc/SchedulePcMcpLaunchCommand.cs)",
+      "Bash(git -C /c/apps/PositionAnalysis/.claude/worktrees/agent-ac4dbdf5 show HEAD:src/schedulepc/ISchedulePcMcpClient.cs)",
+      "Bash(git -C /c/apps/PositionAnalysis/.claude/worktrees/agent-ac4dbdf5 show HEAD:src/schedulepc/Program.cs)",
+      "Bash(git -C /c/apps/PositionAnalysis/.claude/worktrees/agent-ac4dbdf5 ls-files 'src/schedulepc/' 'src/SchedulePCMcp/' 'src/schedulepc.Tests/' 'src/SchedulePCMcp.Tests/')",
+      "Bash(powershell.exe -File \"C:\\\\tmp\\\\rename-namespaces-v2.ps1\")",
+      "Bash(git -C /c/apps/PositionAnalysis/.claude/worktrees/agent-ac4dbdf5 add src/PositionAnalysis src/PositionAnalysis.Mcp src/PositionAnalysis.Tests src/PositionAnalysis.Mcp.Tests)",
+      "Bash(python3 -c ':*)"
+    ]
+  },
   "enableAllProjectMcpServers": true,
   "hooks": {
     "SessionStart": [
