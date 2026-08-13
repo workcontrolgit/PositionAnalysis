@@ -38,6 +38,8 @@ try
     await mcpClient.StartAsync();
 
     using var processAllCancellation = new CancellationTokenSource();
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => mcpClient.KillProcess();
+
     Console.CancelKeyPress += (_, eventArgs) =>
     {
         eventArgs.Cancel = true;
@@ -47,7 +49,7 @@ try
             return;
         }
 
-        mcpClient.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        mcpClient.KillProcess();
         Environment.Exit(0);
     };
 
@@ -100,7 +102,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Unhandled exception in PositionAnalysisChatClient");
-    AnsiConsole.MarkupLine($"[red]Γ¥î Fatal error:[/] {Markup.Escape(ex.Message)}");
+    AnsiConsole.MarkupLine($"[red]\u274c Fatal error:[/] {Markup.Escape(ex.Message)}");
     AnsiConsole.MarkupLine("[grey]Details logged to logs/error-*.log[/]");
     Environment.ExitCode = 1;
 }
@@ -109,7 +111,7 @@ finally
     await Log.CloseAndFlushAsync();
 }
 
-// ΓöÇΓöÇ Helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// \u2500\u2500 Helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 static IChatClient BuildChatClient(IConfiguration config, string provider)
 {
@@ -236,7 +238,7 @@ class PositionAnalysisChatClient
 
             if (userInput.Equals("exit", StringComparison.OrdinalIgnoreCase))
             {
-                AnsiConsole.MarkupLine("\n[green]Γ£ô[/] Exiting Schedule PC Chat Client.");
+                AnsiConsole.MarkupLine("\n[green]\u2714[/] Exiting Schedule PC Chat Client.");
                 break;
             }
 
@@ -1019,6 +1021,16 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
         }
     }
 
+    public void KillProcess()
+    {
+        try
+        {
+            if (_process != null && !_process.HasExited)
+                _process.Kill(entireProcessTree: true);
+        }
+        catch { }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_process == null)
@@ -1026,20 +1038,11 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
 
         try
         {
-            if (!_process.HasExited)
-            {
-                await _process.StandardInput.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"id\":9999,\"method\":\"shutdown\"}");
-                await _process.StandardInput.FlushAsync();
-                _process.Kill(entireProcessTree: true);
-            }
-        }
-        catch
-        {
-            // no-op during shutdown
+            KillProcess();
         }
         finally
         {
-            _process.Dispose();
+            _process?.Dispose();
             _process = null;
             _requestLock.Dispose();
         }
