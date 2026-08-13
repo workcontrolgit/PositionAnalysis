@@ -14,7 +14,7 @@ public class GenerateDocumentsToolHandler : IMcpToolHandler
 
     public string Name => "generate_documents";
 
-    public string Description => "Generate Word evaluation documents for ALL completed evaluations with no filtering. Do NOT use this if the user names specific series, org codes, or PD numbers ΓÇö use generate_documents_by_series, generate_documents_by_orgs, or generate_documents_by_pd instead.";
+    public string Description => "Generate Word evaluation documents for ALL completed evaluations with no filtering. Do NOT use this if the user names specific series, org codes, or PD numbers — use generate_documents_by_series, generate_documents_by_orgs, or generate_documents_by_pd instead.";
 
     public object InputSchema => new
     {

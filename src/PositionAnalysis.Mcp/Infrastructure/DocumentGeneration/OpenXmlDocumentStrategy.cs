@@ -87,7 +87,7 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
     //  [14] CB Policy-Advocating Yes    [15] No   [16] Evidence
     //  [17] CB Confidential Yes         [18] No   [19] Evidence
     //  [20-21] reserved
-    //  [22] CB Final ΓÇö Convert          [23] CB Final ΓÇö Retain
+    //  [22] CB Final — Convert          [23] CB Final — Retain
     //  [24] Rating (Section 3)  [25] Justification  [26] Evaluator  [27] Agency Head
     //  [28-31] Appendix A: PD Nbr, Title, Org Name, Org Code
     //  [32-39] Appendix A cont.  [40-41] Appendix B template row
@@ -134,7 +134,7 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
             SetSdtText (allSdts, nsm, i * 3 + 10,  evidence);
         }
 
-        // SDTs 20, 21 reserved ΓÇö skip
+        // SDTs 20, 21 reserved — skip
 
         // Section 3
         SetCheckbox  (allSdts, nsm, 22,  result.IsCandidate);

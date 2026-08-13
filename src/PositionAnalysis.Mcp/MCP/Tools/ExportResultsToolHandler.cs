@@ -14,7 +14,7 @@ public class ExportResultsToolHandler : IMcpToolHandler
 
     public string Name => "export_results";
 
-    public string Description => "Export ALL evaluation results to Excel with no filtering. Do NOT use this if the user names specific series, org codes, or PD numbers ΓÇö use export_results_by_series, export_results_by_orgs, or export_results_by_pd instead.";
+    public string Description => "Export ALL evaluation results to Excel with no filtering. Do NOT use this if the user names specific series, org codes, or PD numbers — use export_results_by_series, export_results_by_orgs, or export_results_by_pd instead.";
 
     public object InputSchema => new
     {

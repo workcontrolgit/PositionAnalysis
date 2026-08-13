@@ -88,7 +88,7 @@ public static class MarkdigSpectreRenderer
 
         foreach (var item in list.OfType<ListItemBlock>())
         {
-            var prefix = list.IsOrdered ? $"{orderedIndex++}." : "ΓÇó";
+            var prefix = list.IsOrdered ? $"{orderedIndex++}." : "\u2022";
 
             var firstPara = item.OfType<ParagraphBlock>().FirstOrDefault();
             if (firstPara is not null)
@@ -185,12 +185,12 @@ public static class MarkdigSpectreRenderer
                 break;
 
             case LinkInline link:
-                // Render link text only ΓÇö URLs are not useful in a terminal
+                // Render link text only — URLs are not useful in a terminal
                 foreach (var child in link) AppendInline(sb, child);
                 break;
 
             case Markdig.Syntax.Inlines.HtmlInline html:
-                // Strip HTML tags ΓÇö show nothing (e.g. <br>, <em>)
+                // Strip HTML tags — show nothing (e.g. <br>, <em>)
                 break;
 
             case Markdig.Syntax.Inlines.HtmlEntityInline entity:

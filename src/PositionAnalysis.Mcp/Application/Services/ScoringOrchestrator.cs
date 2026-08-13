@@ -350,7 +350,7 @@ INTRODUCTION:
 MAJOR DUTIES:
 {dutiesSummary}
 
-Return ONLY valid JSON in exactly this structure ΓÇö no markdown fences, no additional text:
+Return ONLY valid JSON in exactly this structure — no markdown fences, no additional text:
 {{
   ""score"": <0-100 numeric overall score>,
   ""rating"": ""HIGH"" | ""MEDIUM"" | ""LOW"" | ""DOES_NOT_MEET"",
@@ -391,9 +391,9 @@ Schedule PC Criterion definitions:
 - Policy-Advocating: Position represents the agency in advocating for policy positions to external parties.
 - Confidential: Position requires a close confidential working relationship with a Schedule PC official.
 
-Only list a duty number in supportingDutyNumbers if that specific duty's text actually supports the finding ΓÇö do not list duties (e.g. ""other duties as assigned"") that provide no relevant evidence. Use an empty array if triggered is false.
+Only list a duty number in supportingDutyNumbers if that specific duty's text actually supports the finding — do not list duties (e.g. ""other duties as assigned"") that provide no relevant evidence. Use an empty array if triggered is false.
 
-positionPurpose must be descriptive, not evaluative, and should synthesize both the INTRODUCTION and MAJOR DUTIES sections above ΓÇö do not just restate the introduction.";
+positionPurpose must be descriptive, not evaluative, and should synthesize both the INTRODUCTION and MAJOR DUTIES sections above — do not just restate the introduction.";
     }
 
     private static string StripMarkdownFences(string response)
