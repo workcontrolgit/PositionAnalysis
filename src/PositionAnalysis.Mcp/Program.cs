@@ -16,7 +16,7 @@ namespace PositionAnalysis.Mcp;
 
 /// <summary>
 /// Schedule PC MCP Server
-/// Orchestrates the complete evaluation pipeline: staging ΓåÆ reporting ΓåÆ scoring ΓåÆ document generation ΓåÆ export
+/// Orchestrates the complete evaluation pipeline: staging → reporting → scoring → document generation → export
 /// </summary>
 public class Program
 {

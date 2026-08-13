@@ -24,7 +24,7 @@ public static class MarkdigSpectreRenderer
         RenderBlocks(doc);
     }
 
-    // ΓöÇΓöÇ Block rendering ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // ── Block rendering ───────────────────────────────────────────────────────
 
     private static void RenderBlocks(IEnumerable<Block> blocks)
     {
@@ -48,7 +48,7 @@ public static class MarkdigSpectreRenderer
                     AnsiConsole.Write(new Rule().RuleStyle("grey"));
                     break;
                 case QuoteBlock quote:
-                    AnsiConsole.MarkupLine("[grey]Γöé[/]");
+                    AnsiConsole.MarkupLine("[grey]│[/]");
                     RenderBlocks(quote);
                     break;
             }
@@ -150,7 +150,7 @@ public static class MarkdigSpectreRenderer
         AnsiConsole.WriteLine();
     }
 
-    // ΓöÇΓöÇ Inline rendering ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // ── Inline rendering ──────────────────────────────────────────────────────
 
     private static string InlinesToMarkup(ContainerInline? inline)
     {
@@ -206,7 +206,7 @@ public static class MarkdigSpectreRenderer
         }
     }
 
-    // ΓöÇΓöÇ Plain text extraction ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // ── Plain text extraction ──────────────────────────────────────────────────
 
     public static string ExtractPlainText(ContainerInline? inline)
     {
