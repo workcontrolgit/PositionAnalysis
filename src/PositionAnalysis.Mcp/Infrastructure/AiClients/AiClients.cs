@@ -1,18 +1,25 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OllamaSharp;
-using OllamaSharp.Models;
 using PositionAnalysis.Mcp.Infrastructure.Config;
 
 namespace PositionAnalysis.Mcp.Infrastructure.AiClients;
 
 /// <summary>
-/// AI completion result
+/// AI completion result with token usage and estimated cost
 /// </summary>
-public record AiCompletionResult(string Content, int TokensUsed, bool IsSuccess, string? ErrorMessage = null);
+public record AiCompletionResult(
+    string Content,
+    int PromptTokens,
+    int CompletionTokens,
+    bool IsSuccess,
+    decimal EstimatedCostUsd = 0m,
+    string? ErrorMessage = null)
+{
+    public int TokensUsed => PromptTokens + CompletionTokens;
+}
 
 /// <summary>
 /// Interface for AI/LLM completion services
@@ -23,8 +30,110 @@ public interface IAiClient
 }
 
 /// <summary>
-/// Ollama AI client implementation
-/// Connects to local Ollama server for model inference
+/// Estimates LLM cost from token counts.
+/// Loads pricing from llm-pricing.json next to the executable; falls back to built-in defaults if the file
+/// is missing or malformed. Config overrides (CostPerInputTokenK / CostPerOutputTokenK) always take precedence.
+/// All prices are per 1,000 tokens (USD).
+/// </summary>
+public static class LlmCostEstimator
+{
+    private const string PricingFileName = "llm-pricing.json";
+
+    // Built-in fallback — ordered longest-key-first so more-specific models match before their prefixes.
+    private static readonly (string Key, decimal InputPerK, decimal OutputPerK)[] BuiltInFallback =
+    [
+        ("gpt-5.1-codex-mini", 0.000250m, 0.002000m),
+        ("gpt-5.1",            0.001250m, 0.010000m),
+        ("codex-max",          0.001250m, 0.010000m),
+        ("codex-mini",         0.000250m, 0.002000m),
+        ("gpt-4o-mini",        0.000150m, 0.000600m),
+        ("gpt-4o",             0.002500m, 0.010000m),
+        ("gpt-4-turbo",        0.010000m, 0.030000m),
+        ("gpt-4",              0.030000m, 0.060000m),
+        ("gpt-35-turbo",       0.000500m, 0.001500m),
+        ("gpt-3.5-turbo",      0.000500m, 0.001500m),
+    ];
+
+    private static readonly Lazy<(string Key, decimal InputPerK, decimal OutputPerK)[]> _table =
+        new(LoadPricingTable, isThreadSafe: true);
+
+    private static (string Key, decimal InputPerK, decimal OutputPerK)[] LoadPricingTable()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, PricingFileName);
+        if (!File.Exists(path))
+            return BuiltInFallback;
+
+        try
+        {
+            var json = File.ReadAllText(path);
+            var entries = JsonSerializer.Deserialize<PricingEntry[]>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (entries is null || entries.Length == 0)
+                return BuiltInFallback;
+
+            // Sort longest-key-first so more-specific models match before their prefixes.
+            return entries
+                .Where(e => !string.IsNullOrWhiteSpace(e.Key))
+                .OrderByDescending(e => e.Key.Length)
+                .Select(e => (e.Key, (decimal)e.InputPerK, (decimal)e.OutputPerK))
+                .ToArray();
+        }
+        catch
+        {
+            return BuiltInFallback;
+        }
+    }
+
+    private sealed class PricingEntry
+    {
+        public string Key { get; set; } = string.Empty;
+        public double InputPerK { get; set; }
+        public double OutputPerK { get; set; }
+    }
+
+    /// <summary>
+    /// Returns estimated cost in USD and a label describing which pricing source was used.
+    /// Returns (0, "unknown") when no pricing is available.
+    /// </summary>
+    public static (decimal Cost, string Source) Estimate(
+        string deploymentName,
+        int promptTokens,
+        int completionTokens,
+        decimal configInputPerK = 0m,
+        decimal configOutputPerK = 0m)
+    {
+        decimal inputPerK, outputPerK;
+        string source;
+
+        if (configInputPerK > 0 || configOutputPerK > 0)
+        {
+            inputPerK = configInputPerK;
+            outputPerK = configOutputPerK;
+            source = "config";
+        }
+        else
+        {
+            var table = _table.Value;
+            var match = table.FirstOrDefault(
+                e => deploymentName.Contains(e.Key, StringComparison.OrdinalIgnoreCase));
+
+            if (match == default)
+                return (0m, "unknown");
+
+            inputPerK = match.InputPerK;
+            outputPerK = match.OutputPerK;
+            source = $"file:{match.Key}";
+        }
+
+        var cost = (promptTokens / 1000m) * inputPerK + (completionTokens / 1000m) * outputPerK;
+        return (cost, source);
+    }
+}
+
+/// <summary>
+/// Ollama AI client implementation.
+/// Connects to a local Ollama server — no API cost.
 /// </summary>
 public class OllamaAiClient : IAiClient
 {
@@ -40,8 +149,8 @@ public class OllamaAiClient : IAiClient
         _model = ollama.Model;
         _temperature = (float)ollama.Temperature;
         _logger = logger;
-        
-        _logger.LogInformation("OllamaAiClient initialized at {Endpoint} using model {Model}", 
+
+        _logger.LogInformation("OllamaAiClient initialized at {Endpoint} using model {Model}",
             _endpoint, _model);
     }
 
@@ -52,22 +161,20 @@ public class OllamaAiClient : IAiClient
             _logger.LogDebug("Sending completion request to Ollama");
 
             var client = new OllamaApiClient(new Uri(_endpoint));
-            
-            // Use GenerateAsync with the proper API - it returns IAsyncEnumerable for streaming
-            var fullPrompt = string.IsNullOrWhiteSpace(systemPrompt) 
-                ? prompt 
+
+            var fullPrompt = string.IsNullOrWhiteSpace(systemPrompt)
+                ? prompt
                 : $"{systemPrompt}\n\n{prompt}";
-            
-            var request = new OllamaSharp.Models.GenerateRequest 
-            { 
-                Model = _model, 
+
+            var request = new OllamaSharp.Models.GenerateRequest
+            {
+                Model = _model,
                 Prompt = fullPrompt,
                 Stream = false
             };
 
             var responseBuilder = new StringBuilder();
-            
-            // Collect all streaming responses
+
             await foreach (var response in client.GenerateAsync(request))
             {
                 if (response != null)
@@ -75,30 +182,33 @@ public class OllamaAiClient : IAiClient
             }
 
             var fullResponse = responseBuilder.ToString();
-            _logger.LogDebug("Received completion response: {ResponseLength} chars", fullResponse.Length);
+
+            _logger.LogDebug("Received Ollama response: {ResponseLength} chars (local — no cost)",
+                fullResponse.Length);
 
             return new AiCompletionResult(
                 Content: fullResponse,
-                TokensUsed: 0,
-                IsSuccess: true
-            );
+                PromptTokens: 0,
+                CompletionTokens: 0,
+                IsSuccess: true,
+                EstimatedCostUsd: 0m);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error calling Ollama API");
             return new AiCompletionResult(
                 Content: "",
-                TokensUsed: 0,
+                PromptTokens: 0,
+                CompletionTokens: 0,
                 IsSuccess: false,
-                ErrorMessage: ex.Message
-            );
+                ErrorMessage: ex.Message);
         }
     }
 }
 
 /// <summary>
-/// Azure OpenAI client implementation
-/// Connects to Azure OpenAI Service for model inference
+/// Azure OpenAI client implementation.
+/// Connects to Azure OpenAI Service and captures token usage for cost estimation.
 /// </summary>
 public class AzureOpenAiClient : IAiClient
 {
@@ -107,6 +217,8 @@ public class AzureOpenAiClient : IAiClient
     private readonly string _deploymentName;
     private readonly int _maxCompletionTokens;
     private readonly float _temperature;
+    private readonly decimal _configInputPerK;
+    private readonly decimal _configOutputPerK;
     private readonly ILogger<AzureOpenAiClient> _logger;
 
     public AzureOpenAiClient(IOptions<AiSettings> aiOptions, ILogger<AzureOpenAiClient> logger)
@@ -117,9 +229,11 @@ public class AzureOpenAiClient : IAiClient
         _deploymentName = azureSettings.DeploymentName;
         _maxCompletionTokens = azureSettings.MaxCompletionTokens;
         _temperature = (float)azureSettings.Temperature;
+        _configInputPerK = azureSettings.CostPerInputTokenK;
+        _configOutputPerK = azureSettings.CostPerOutputTokenK;
         _logger = logger;
 
-        _logger.LogInformation("AzureOpenAiClient initialized at {Endpoint} using deployment {Deployment}", 
+        _logger.LogInformation("AzureOpenAiClient initialized at {Endpoint} using deployment {Deployment}",
             _endpoint, _deploymentName);
     }
 
@@ -147,45 +261,57 @@ public class AzureOpenAiClient : IAiClient
             var content = new System.Net.Http.StringContent(
                 System.Text.Json.JsonSerializer.Serialize(requestBody),
                 System.Text.Encoding.UTF8,
-                "application/json"
-            );
+                "application/json");
 
             var response = await client.PostAsync(url, content);
             var responseText = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("Azure OpenAI API error: {StatusCode} - {ResponseText}", 
+                _logger.LogError("Azure OpenAI API error: {StatusCode} - {ResponseText}",
                     response.StatusCode, responseText);
                 return new AiCompletionResult(
                     Content: "",
-                    TokensUsed: 0,
+                    PromptTokens: 0,
+                    CompletionTokens: 0,
                     IsSuccess: false,
-                    ErrorMessage: $"HTTP {response.StatusCode}"
-                );
+                    ErrorMessage: $"HTTP {response.StatusCode}");
             }
 
             var jsonResponse = System.Text.Json.JsonDocument.Parse(responseText);
             var root = jsonResponse.RootElement;
             var message = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
 
-            _logger.LogDebug("Received completion response: {ResponseLength} chars", message.Length);
+            var promptTokens = 0;
+            var completionTokens = 0;
+            if (root.TryGetProperty("usage", out var usage))
+            {
+                if (usage.TryGetProperty("prompt_tokens", out var pt)) promptTokens = pt.GetInt32();
+                if (usage.TryGetProperty("completion_tokens", out var ct)) completionTokens = ct.GetInt32();
+            }
+
+            var (estimatedCost, costSource) = LlmCostEstimator.Estimate(
+                _deploymentName, promptTokens, completionTokens, _configInputPerK, _configOutputPerK);
+
+            _logger.LogDebug("Azure OpenAI response: {ResponseLength} chars, {PromptTokens} prompt + {CompletionTokens} completion tokens, cost source: {CostSource}",
+                message.Length, promptTokens, completionTokens, costSource);
 
             return new AiCompletionResult(
                 Content: message,
-                TokensUsed: 0,
-                IsSuccess: true
-            );
+                PromptTokens: promptTokens,
+                CompletionTokens: completionTokens,
+                IsSuccess: true,
+                EstimatedCostUsd: estimatedCost);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error calling Azure OpenAI API");
             return new AiCompletionResult(
                 Content: "",
-                TokensUsed: 0,
+                PromptTokens: 0,
+                CompletionTokens: 0,
                 IsSuccess: false,
-                ErrorMessage: ex.Message
-            );
+                ErrorMessage: ex.Message);
         }
     }
 }
