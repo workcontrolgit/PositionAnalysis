@@ -43,4 +43,8 @@
 
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="llm-pricing.json" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
 </Project>

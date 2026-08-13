@@ -71,6 +71,7 @@ Be objective and ground every finding in specific language from the duties text.
                 return;
             }
 
+            LogLlmCost(pdNbr, aiResult);
             var evaluationResult = ParseLlmResponse(pd, aiResult.Content);
 
             await _evalRepository.UpdateAsync(evaluationResult);
@@ -268,6 +269,8 @@ Be objective and ground every finding in specific language from the duties text.
             else
             {
                 var aiResult = await _aiClient.CompleteAsync(GenerateEvaluationPrompt(pd), SystemPrompt);
+                if (aiResult.IsSuccess)
+                    LogLlmCost(claimedResult.PdNbr, aiResult);
                 completedResult = aiResult.IsSuccess
                     ? ParseLlmResponse(pd, aiResult.Content)
                     : CreateFailedClaimResult(claimedResult, $"AI error: {aiResult.ErrorMessage}");
@@ -520,6 +523,13 @@ positionPurpose must be descriptive, not evaluative, and should synthesize both 
             "DOES_NOT_MEET" => "DOES_NOT_MEET",
             _ => "DOES_NOT_MEET"
         };
+    }
+
+    private void LogLlmCost(string pdNbr, AiCompletionResult aiResult)
+    {
+        _logger.LogInformation(
+            "PD {PdNbr} LLM cost: {PromptTokens:N0} prompt + {CompletionTokens:N0} completion = {TotalTokens:N0} tokens, ~${Cost:F4}",
+            pdNbr, aiResult.PromptTokens, aiResult.CompletionTokens, aiResult.TokensUsed, aiResult.EstimatedCostUsd);
     }
 
     private async Task UpdateResultStatusAsync(string pdNbr, string status, string errorMessage)

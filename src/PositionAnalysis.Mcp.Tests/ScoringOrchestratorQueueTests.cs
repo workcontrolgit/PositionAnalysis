@@ -84,7 +84,7 @@ public class ScoringOrchestratorQueueTests
             CreatePositionDescription("PD-2", 2));
         var orchestrator = new ScoringOrchestrator(
             new SequencedAiClient(
-                new AiCompletionResult("", 0, false, "first PD failure"),
+                new AiCompletionResult("", 0, 0, false, ErrorMessage: "first PD failure"),
                 SuccessfulAiClient.Result),
             evaluationRepository,
             positionRepository,
@@ -152,6 +152,7 @@ public class ScoringOrchestratorQueueTests
                   "criteria": []
                 }
                 """,
+                0,
                 0,
                 true);
 
