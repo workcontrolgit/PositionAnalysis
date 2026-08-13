@@ -45,6 +45,8 @@
 
   <ItemGroup>
     <Content Include="llm-pricing.json" CopyToOutputDirectory="Always" />
+    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="templates\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

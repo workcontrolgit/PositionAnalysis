@@ -100,6 +100,9 @@ public class RescoreHumanSchedulePcPdsToolHandlerTests
         public Task ScoreAllAsync() => throw new NotSupportedException();
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
         public Task RescoreAllAsync() => throw new NotSupportedException();
+        public Task RescoreFlaggedAsync() => throw new NotSupportedException();
+        public Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
+        public Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers) => throw new NotSupportedException();
         public Task<EvaluationResult?> GetResultAsync(string pdNbr) => throw new NotSupportedException();
     }
 }

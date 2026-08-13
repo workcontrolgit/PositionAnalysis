@@ -50,6 +50,9 @@ public class GetQueueStatusToolHandlerTests
         public Task<List<EvaluationResult>> GetAllAsync() => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series) => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
+        public Task<List<EvaluationResult>> GetNeedsRescoreAsync() => throw new NotSupportedException();
+        public Task<List<EvaluationResult>> GetNeedsRescoreBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
+        public Task<List<EvaluationResult>> GetNeedsRescoreByPdNumbersAsync(IEnumerable<string> pdNumbers) => throw new NotSupportedException();
         public Task<int> GetCountByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
         public Task<int> ResetFailedAsync() => throw new NotSupportedException();
         public Task<QueueStatus> GetQueueStatusAsync() => Task.FromResult(_status);

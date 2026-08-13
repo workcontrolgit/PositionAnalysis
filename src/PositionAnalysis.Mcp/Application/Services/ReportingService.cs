@@ -40,10 +40,20 @@ public class ReportingService : IReportingService
 
     public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportBySeriesAsync(IEnumerable<string> series)
     {
-        var seriesCodes = new HashSet<string>(series ?? throw new ArgumentNullException(nameof(series)), StringComparer.OrdinalIgnoreCase);
-        var results = await _evalRepository.GetAllAsync();
-        var filtered = results.Where(r => seriesCodes.Contains(r.Series.Code));
-        return BuildSeriesStatus(filtered, stagedOnly: false);
+        var seriesCodes = (series ?? throw new ArgumentNullException(nameof(series)))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var results = new List<Domain.Entities.EvaluationResult>();
+        foreach (var seriesCode in seriesCodes)
+        {
+            var occupationalSeries = new OccupationalSeries(seriesCode);
+            results.AddRange(await _evalRepository.GetBySeriesAsync(occupationalSeries));
+        }
+
+        return BuildSeriesStatus(results, stagedOnly: false);
     }
 
     public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportByOrgCodesAsync(IEnumerable<string> orgCodes)

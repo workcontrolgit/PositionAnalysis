@@ -279,6 +279,24 @@ class PositionAnalysisChatClient
         RenderSeriesReport("Processing Status", status);
     }
 
+    private async Task ShowStatusBySeriesAsync(IReadOnlyList<string> series)
+    {
+        var status = await _mcpClient.CallToolAsync("get_processing_status_by_series", new { series });
+        RenderSeriesReport($"Processing Status: series {string.Join(", ", series)}", status);
+    }
+
+    private async Task ShowStatusByOrgsAsync(IReadOnlyList<string> orgCodes)
+    {
+        var status = await _mcpClient.CallToolAsync("get_processing_status_by_orgs", new { orgCodes });
+        RenderSeriesReport($"Processing Status: org(s) {string.Join(", ", orgCodes)}", status);
+    }
+
+    private async Task ShowStatusByPdAsync(IReadOnlyList<string> pdNumbers)
+    {
+        var status = await _mcpClient.CallToolAsync("get_processing_status_by_pd", new { pdNumbers });
+        RenderPdStatusReport($"Processing Status: PD {string.Join(", ", pdNumbers)}", status);
+    }
+
     private async Task ProcessAsync(string seriesInput)
     {
         var series = ParseSeriesList(seriesInput);
@@ -288,6 +306,10 @@ class PositionAnalysisChatClient
             return;
         }
 
+        var pendingCount = await GetSeriesStatusSumAsync(series, "staged");
+        if (!ConfirmLlmCost($"unscored PD(s) in series {Markup.Escape(string.Join(", ", series))}", pendingCount))
+            return;
+
         var result = await _mcpClient.CallToolAsync("process_pds_by_series", new
         {
             series
@@ -296,15 +318,94 @@ class PositionAnalysisChatClient
         AnsiConsole.MarkupLine($"[green]{Markup.Escape(result.GetProperty("status").GetString() ?? "processing_started")}[/]");
     }
 
+    private async Task ProcessPdAsync(string pdNbr)
+    {
+        if (!ConfirmLlmCost($"PD [bold]{Markup.Escape(pdNbr)}[/]", 1))
+            return;
+
+        // No dedicated "process one PD" tool exists; rescore_pd scores it via the same ScoreAsync path.
+        var result = await _mcpClient.CallToolAsync("rescore_pd", new { pd_nbr = pdNbr });
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        AnsiConsole.MarkupLine($"[green]Scoring complete:[/] PD [bold]{Markup.Escape(pdNbr)}[/]");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
     private async Task GenerateAsync()
     {
+        var completeCount = await GetAllStatusSumAsync("complete");
+        if (!ConfirmAction("generate Word documents for", $"[bold]{completeCount}[/] completed evaluation(s)", completeCount))
+            return;
+
         var result = await _mcpClient.CallToolAsync("generate_documents", new { });
         AnsiConsole.MarkupLine($"[green]Documents generated:[/] [bold]{result.GetProperty("generated").GetInt32()}[/]");
     }
 
+    private async Task GenerateBySeriesAsync(IReadOnlyList<string> series)
+    {
+        var completeCount = await GetSeriesStatusSumAsync(series, "complete");
+        if (!ConfirmAction("generate Word documents for", $"[bold]{completeCount}[/] completed evaluation(s) in series {Markup.Escape(string.Join(", ", series))}", completeCount))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("generate_documents_by_series", new { series });
+        AnsiConsole.MarkupLine($"[green]Documents generated:[/] [bold]{result.GetProperty("generated").GetInt32()}[/] (failed: {result.GetProperty("failed").GetInt32()})");
+    }
+
+    private async Task GenerateByOrgsAsync(IReadOnlyList<string> orgCodes)
+    {
+        var completeCount = await GetOrgsStatusSumAsync(orgCodes, "complete");
+        if (!ConfirmAction("generate Word documents for", $"[bold]{completeCount}[/] completed evaluation(s) in org(s) {Markup.Escape(string.Join(", ", orgCodes))}", completeCount))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("generate_documents_by_orgs", new { orgCodes });
+        AnsiConsole.MarkupLine($"[green]Documents generated:[/] [bold]{result.GetProperty("generated").GetInt32()}[/] (failed: {result.GetProperty("failed").GetInt32()})");
+    }
+
+    private async Task GenerateByPdAsync(IReadOnlyList<string> pdNumbers)
+    {
+        if (!ConfirmAction("generate Word documents for", $"PD(s) {Markup.Escape(string.Join(", ", pdNumbers))}", pdNumbers.Count))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("generate_documents_by_pd", new { pdNumbers });
+        AnsiConsole.MarkupLine($"[green]Documents generated:[/] [bold]{result.GetProperty("generated").GetInt32()}[/] (failed: {result.GetProperty("failed").GetInt32()})");
+    }
+
     private async Task ExportAsync()
     {
+        var totalCount = await GetAllStatusSumAsync("staged", "inProgress", "complete", "failed");
+        if (!ConfirmAction("export", $"[bold]{totalCount}[/] evaluation result row(s) to Excel", totalCount))
+            return;
+
         var result = await _mcpClient.CallToolAsync("export_results", new { });
+        AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
+    }
+
+    private async Task ExportBySeriesAsync(IReadOnlyList<string> series)
+    {
+        var totalCount = await GetSeriesStatusSumAsync(series, "staged", "inProgress", "complete", "failed");
+        if (!ConfirmAction("export", $"[bold]{totalCount}[/] evaluation result row(s) in series {Markup.Escape(string.Join(", ", series))} to Excel", totalCount))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("export_results_by_series", new { series });
+        AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
+    }
+
+    private async Task ExportByOrgsAsync(IReadOnlyList<string> orgCodes)
+    {
+        var totalCount = await GetOrgsStatusSumAsync(orgCodes, "staged", "inProgress", "complete", "failed");
+        if (!ConfirmAction("export", $"[bold]{totalCount}[/] evaluation result row(s) in org(s) {Markup.Escape(string.Join(", ", orgCodes))} to Excel", totalCount))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("export_results_by_orgs", new { orgCodes });
+        AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
+    }
+
+    private async Task ExportByPdAsync(IReadOnlyList<string> pdNumbers)
+    {
+        if (!ConfirmAction("export", $"PD(s) {Markup.Escape(string.Join(", ", pdNumbers))} to Excel", pdNumbers.Count))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("export_results_by_pd", new { pdNumbers });
         AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
     }
 
@@ -317,6 +418,10 @@ class PositionAnalysisChatClient
             return;
         }
 
+        var totalCount = await GetSeriesStatusSumAsync(series, "staged", "inProgress", "complete", "failed");
+        if (!ConfirmLlmCost($"PD(s) in series {Markup.Escape(string.Join(", ", series))} (forced rescore)", totalCount))
+            return;
+
         var result = await _mcpClient.CallToolAsync("rescore_pds_by_series", new { series });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
         AnsiConsole.MarkupLine($"[green]Rescore complete:[/] series [bold]{Markup.Escape(string.Join(", ", series))}[/]");
@@ -326,6 +431,10 @@ class PositionAnalysisChatClient
 
     private async Task RescoreAllAsync()
     {
+        var totalCount = await GetAllStatusSumAsync("staged", "inProgress", "complete", "failed");
+        if (!ConfirmLlmCost("all staged PD(s) (forced rescore)", totalCount))
+            return;
+
         var result = await _mcpClient.CallToolAsync("rescore_all_pds", new { });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
         AnsiConsole.MarkupLine("[green]Rescore complete:[/] all staged PDs");
@@ -333,8 +442,62 @@ class PositionAnalysisChatClient
             AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
     }
 
+    private async Task RescoreFlaggedAsync()
+    {
+        var count = await GetNeedsRescoreCountAsync();
+        if (!ConfirmLlmCost("PD(s) flagged needs_rescore = 'Y'", count))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("rescore_flagged_pds", new { });
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        AnsiConsole.MarkupLine("[green]Rescore complete:[/] all needs_rescore-flagged PDs");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
+    private async Task RescoreFlaggedBySeriesAsync(IReadOnlyList<string> series)
+    {
+        if (series.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No valid series codes found.[/] Series codes must be 5 digits, e.g. [bold]00201[/]. 0 PD(s) match.");
+            return;
+        }
+
+        var count = await GetNeedsRescoreCountAsync(series: series);
+        if (!ConfirmLlmCost($"PD(s) flagged needs_rescore = 'Y' in series {Markup.Escape(string.Join(", ", series))}", count))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("rescore_flagged_pds_by_series", new { series });
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        AnsiConsole.MarkupLine($"[green]Rescore complete:[/] needs_rescore-flagged PDs in series [bold]{Markup.Escape(string.Join(", ", series))}[/]");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
+    private async Task RescoreFlaggedByPdAsync(IReadOnlyList<string> pdNumbers)
+    {
+        if (pdNumbers.Count == 0)
+        {
+            AnsiConsole.MarkupLine("[yellow]No valid PD numbers found.[/] 0 PD(s) match.");
+            return;
+        }
+
+        var count = await GetNeedsRescoreCountAsync(pdNumbers: pdNumbers);
+        if (!ConfirmLlmCost($"PD(s) flagged needs_rescore = 'Y' among {Markup.Escape(string.Join(", ", pdNumbers))}", count))
+            return;
+
+        var result = await _mcpClient.CallToolAsync("rescore_flagged_pds_by_pd", new { pdNumbers });
+        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
+        AnsiConsole.MarkupLine($"[green]Rescore complete:[/] needs_rescore-flagged PD(s) [bold]{Markup.Escape(string.Join(", ", pdNumbers))}[/]");
+        if (!string.IsNullOrWhiteSpace(status))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
+    }
+
     private async Task RescorePdAsync(string pdNbr)
     {
+        if (!ConfirmLlmCost($"PD [bold]{Markup.Escape(pdNbr)}[/] (forced rescore)", 1))
+            return;
+
         var result = await _mcpClient.CallToolAsync("rescore_pd", new { pd_nbr = pdNbr });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
         AnsiConsole.MarkupLine($"[green]Rescore complete:[/] PD [bold]{Markup.Escape(pdNbr)}[/]");
@@ -344,6 +507,12 @@ class PositionAnalysisChatClient
 
     private async Task RescoreHumanSchedulePcAsync()
     {
+        if (!AnsiConsole.Confirm("[yellow]This will call the LLM to rescore all human-flagged Schedule P/C PDs found, which incurs cost. Continue?[/]"))
+        {
+            AnsiConsole.MarkupLine("[grey]Cancelled.[/]");
+            return;
+        }
+
         var result = await _mcpClient.CallToolAsync("rescore_human_schedule_pc_pds", new { });
 
         if (result.TryGetProperty("error", out var errorEl))
@@ -380,9 +549,85 @@ class PositionAnalysisChatClient
 
     private async Task ProcessAllAsync()
     {
+        var queueStatus = await _mcpClient.CallToolAsync("get_queue_status", new { });
+        var pendingCount = queueStatus.TryGetProperty("pending", out var p) && p.TryGetInt32(out var n) ? n : 0;
+        if (!ConfirmLlmCost("unscored PD(s) across all staged series", pendingCount))
+            return;
+
         var result = await _mcpClient.CallToolAsync("process_all_pds", new { });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "processing_started" : "processing_started";
         AnsiConsole.MarkupLine($"[green]{Markup.Escape(status)}[/] — scoring all staged PDs across all series.");
+    }
+
+    private static bool ConfirmLlmCost(string description, int count)
+    {
+        if (count == 0)
+        {
+            AnsiConsole.MarkupLine($"[yellow]No {description} found.[/] Nothing to do.");
+            return false;
+        }
+
+        var confirmed = AnsiConsole.Confirm(
+            $"[yellow]This will call the LLM to score [bold]{count}[/] {description}, which incurs cost. Continue?[/]");
+        if (!confirmed)
+            AnsiConsole.MarkupLine("[grey]Cancelled.[/]");
+        return confirmed;
+    }
+
+    private static bool ConfirmAction(string verb, string description, int count)
+    {
+        if (count == 0)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Nothing to {verb}.[/] 0 records match.");
+            return false;
+        }
+
+        var confirmed = AnsiConsole.Confirm($"[yellow]This will {verb} {description}. Continue?[/]");
+        if (!confirmed)
+            AnsiConsole.MarkupLine("[grey]Cancelled.[/]");
+        return confirmed;
+    }
+
+    private async Task<int> GetSeriesStatusSumAsync(IReadOnlyList<string> series, params string[] fields)
+    {
+        var result = await _mcpClient.CallToolAsync("get_processing_status_by_series", new { series });
+        return SumStatusFields(result, fields);
+    }
+
+    private async Task<int> GetOrgsStatusSumAsync(IReadOnlyList<string> orgCodes, params string[] fields)
+    {
+        var result = await _mcpClient.CallToolAsync("get_processing_status_by_orgs", new { orgCodes });
+        return SumStatusFields(result, fields);
+    }
+
+    private async Task<int> GetAllStatusSumAsync(params string[] fields)
+    {
+        var result = await _mcpClient.CallToolAsync("get_processing_status", new { });
+        return SumStatusFields(result, fields);
+    }
+
+    private async Task<int> GetNeedsRescoreCountAsync(IReadOnlyList<string>? series = null, IReadOnlyList<string>? pdNumbers = null)
+    {
+        var result = await _mcpClient.CallToolAsync("get_needs_rescore_count", new { series, pdNumbers });
+        return result.TryGetProperty("count", out var count) && count.TryGetInt32(out var n) ? n : 0;
+    }
+
+    private static int SumStatusFields(JsonElement result, params string[] fields)
+    {
+        if (!result.TryGetProperty("series", out var seriesArray) || seriesArray.ValueKind != JsonValueKind.Array)
+            return 0;
+
+        var sum = 0;
+        foreach (var item in seriesArray.EnumerateArray())
+        {
+            foreach (var field in fields)
+            {
+                if (item.TryGetProperty(field, out var value) && value.TryGetInt32(out var n))
+                    sum += n;
+            }
+        }
+
+        return sum;
     }
 
     private async Task ClearSchedulePcEvalAsync()
@@ -529,19 +774,55 @@ class PositionAnalysisChatClient
 
         if (IsProcessingStatusPrompt(normalized))
         {
-            await ShowStatusAsync();
+            var pdNumbers = ExtractPdNumbers(userInput);
+            var series = ExtractSeriesCodes(userInput);
+            var orgCodes = ExtractOrgCodes(userInput);
+
+            if (pdNumbers.Count > 0)
+                await ShowStatusByPdAsync(pdNumbers);
+            else if (series.Count > 0)
+                await ShowStatusBySeriesAsync(series);
+            else if (orgCodes.Count > 0)
+                await ShowStatusByOrgsAsync(orgCodes);
+            else
+                await ShowStatusAsync();
+
             return true;
         }
 
         if (IsGeneratePrompt(normalized))
         {
-            await GenerateAsync();
+            var pdNumbers = ExtractPdNumbers(userInput);
+            var series = ExtractSeriesCodes(userInput);
+            var orgCodes = ExtractOrgCodes(userInput);
+
+            if (pdNumbers.Count > 0)
+                await GenerateByPdAsync(pdNumbers);
+            else if (series.Count > 0)
+                await GenerateBySeriesAsync(series);
+            else if (orgCodes.Count > 0)
+                await GenerateByOrgsAsync(orgCodes);
+            else
+                await GenerateAsync();
+
             return true;
         }
 
         if (IsExportPrompt(normalized))
         {
-            await ExportAsync();
+            var pdNumbers = ExtractPdNumbers(userInput);
+            var series = ExtractSeriesCodes(userInput);
+            var orgCodes = ExtractOrgCodes(userInput);
+
+            if (pdNumbers.Count > 0)
+                await ExportByPdAsync(pdNumbers);
+            else if (series.Count > 0)
+                await ExportBySeriesAsync(series);
+            else if (orgCodes.Count > 0)
+                await ExportByOrgsAsync(orgCodes);
+            else
+                await ExportAsync();
+
             return true;
         }
 
@@ -554,6 +835,23 @@ class PositionAnalysisChatClient
         if (IsRescoreAllPrompt(normalized))
         {
             await RescoreAllAsync();
+            return true;
+        }
+
+        if (IsRescoreFlaggedPrompt(normalized))
+        {
+            var pdNumbers = ExtractPdNumbers(userInput);
+            var series = ExtractSeriesCodes(userInput);
+            var explicitByPd = normalized.Contains("by_pd") || normalized.Contains("by pd");
+            var explicitBySeries = normalized.Contains("by_series") || normalized.Contains("by series");
+
+            if (explicitByPd || (!explicitBySeries && pdNumbers.Count > 0))
+                await RescoreFlaggedByPdAsync(pdNumbers);
+            else if (explicitBySeries || series.Count > 0)
+                await RescoreFlaggedBySeriesAsync(series);
+            else
+                await RescoreFlaggedAsync();
+
             return true;
         }
 
@@ -590,10 +888,17 @@ class PositionAnalysisChatClient
 
         if (IsProcessPrompt(normalized))
         {
+            var pdNumbers = ExtractPdNumbers(userInput);
+            if (pdNumbers.Count > 0)
+            {
+                await ProcessPdAsync(pdNumbers[0]);
+                return true;
+            }
+
             var series = ExtractSeriesCodes(userInput);
             if (series.Count == 0)
             {
-                AnsiConsole.MarkupLine("[yellow]Please include one or more series codes.[/] Example: [bold]process series 0301, 0560[/].");
+                AnsiConsole.MarkupLine("[yellow]Please include one or more series codes or a PD number.[/] Example: [bold]process series 0301, 0560[/] or [bold]process pd 200028[/].");
                 return true;
             }
 
@@ -691,6 +996,30 @@ class PositionAnalysisChatClient
             .ToList();
     }
 
+    // PD numbers are 6+ digits or a letter prefix + digits (e.g. D00240); 5-digit tokens are series codes.
+    private static List<string> ExtractPdNumbers(string input)
+    {
+        var matches = Regex.Matches(input, @"\b([A-Za-z]\d{4,6}|\d{6,})\b");
+        return matches
+            .Select(m => m.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<string> ExtractOrgCodes(string input)
+    {
+        var match = Regex.Match(input, @"(?:org|organization|bureau)(?:\s*codes?)?\s+([A-Za-z0-9,\s\-]+)", RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return new List<string>();
+
+        return match.Groups[1].Value
+            .Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     private static List<string> ParseSeriesList(string input)
     {
         return input.Split(new[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries)
@@ -761,6 +1090,35 @@ class PositionAnalysisChatClient
         AnsiConsole.WriteLine();
     }
 
+    private static void RenderPdStatusReport(string title, JsonElement report)
+    {
+        AnsiConsole.Write(new Rule($"[bold teal]{Markup.Escape(title)}[/]").RuleStyle("teal").LeftJustified());
+        AnsiConsole.WriteLine();
+
+        var table = new Spectre.Console.Table()
+            .BorderColor(Color.Teal)
+            .AddColumn(new TableColumn("[bold cyan]PD_NBR[/]").Centered())
+            .AddColumn(new TableColumn("[bold cyan]SERIES[/]").Centered())
+            .AddColumn(new TableColumn("[bold cyan]STATUS[/]").Centered())
+            .AddColumn(new TableColumn("[bold cyan]RATING[/]").Centered());
+
+        if (report.TryGetProperty("results", out var resultsArray) && resultsArray.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in resultsArray.EnumerateArray())
+            {
+                var pdNbr = item.TryGetProperty("pdNbr", out var p) ? p.GetString() ?? "" : "";
+                var series = item.TryGetProperty("series", out var s) ? s.GetString() ?? "" : "";
+                var status = item.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "";
+                var rating = item.TryGetProperty("rating", out var r) ? r.GetString() ?? "" : "";
+
+                table.AddRow(Markup.Escape(pdNbr), Markup.Escape(series), Markup.Escape(status), Markup.Escape(rating));
+            }
+        }
+
+        AnsiConsole.Write(table);
+        AnsiConsole.WriteLine();
+    }
+
     private static void RenderStagingSummaryReport(string title, JsonElement report)
     {
         AnsiConsole.Write(new Rule($"[bold teal]{Markup.Escape(title)}[/]").RuleStyle("teal").LeftJustified());
@@ -821,6 +1179,12 @@ class PositionAnalysisChatClient
         normalized.Contains("re-score all") ||
         normalized.Contains("force rescore all");
 
+    private static bool IsRescoreFlaggedPrompt(string normalized) =>
+        normalized.Contains("rescore_flagged_pds") ||
+        normalized.Contains("rescore flagged") ||
+        normalized.Contains("re-score flagged") ||
+        normalized.Contains("rescore needs_rescore");
+
     private static bool IsRescoreBySeriesPrompt(string normalized) =>
         normalized.Contains("rescore_pds_by_series") ||
         normalized.Contains("rescore series") ||
@@ -844,7 +1208,7 @@ class PositionAnalysisChatClient
 
     private static string ExtractPdNbr(string userInput)
     {
-        var match = Regex.Match(userInput, @"\b(\d{5,})\b");
+        var match = Regex.Match(userInput, @"\b([A-Za-z]\d{4,6}|\d{6,})\b");
         return match.Success ? match.Groups[1].Value : string.Empty;
     }
 
@@ -897,6 +1261,7 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
 
         _process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start PositionAnalysis.Mcp process");
 
+        // MCP server log lines are consumed silently (not echoed) to keep the chat prompt clean.
         _ = Task.Run(async () =>
         {
             while (_process != null && !_process.HasExited)
