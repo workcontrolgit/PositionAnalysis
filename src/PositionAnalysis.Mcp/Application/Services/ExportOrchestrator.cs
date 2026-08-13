@@ -6,6 +6,7 @@ using PositionAnalysis.Mcp.Application.Interfaces;
 using PositionAnalysis.Mcp.Domain.Entities;
 using PositionAnalysis.Mcp.Domain.ValueObjects;
 using PositionAnalysis.Mcp.Infrastructure.Config;
+using PositionAnalysis.Mcp.Infrastructure.DocumentGeneration;
 using PositionAnalysis.Mcp.Infrastructure.Repositories;
 
 namespace PositionAnalysis.Mcp.Application.Services;
@@ -275,7 +276,7 @@ public class ExportOrchestrator : IExportOrchestrator
         {
             "PD Number", "Position Title", "Org Code", "Pay Plan", "Series", "Grade",
             "Manager Level", "Position Sensitivity", "Public Trust", "Service Category",
-            "Is Candidate", "Rating", "Criteria Met Count", "Policy-Determining",
+            "Is Candidate", "Rating", "AI Score", "Criteria Met Count", "Policy-Determining",
             "Policy-Determining Evidence", "Policy-Making", "Policy-Making Evidence",
             "Policy-Advocating", "Policy-Advocating Evidence", "Confidential",
             "Confidential Evidence", "Justification Summary", "Eval Date", "Word Form Filename"
@@ -316,22 +317,25 @@ public class ExportOrchestrator : IExportOrchestrator
             worksheet.Cell(row, 10).Value = GetServiceCategoryLabel(position?.ServiceCategory);
             worksheet.Cell(row, 11).Value = result.IsCandidate ? "YES" : "NO";
             worksheet.Cell(row, 12).Value = result.Rating;
-            worksheet.Cell(row, 13).Value = result.CriteriaScores.Count(c => c.Triggered);
-            worksheet.Cell(row, 14).Value = policyDetermining.Triggered.ToString();
-            worksheet.Cell(row, 15).Value = policyDetermining.Evidence;
-            worksheet.Cell(row, 16).Value = policyMaking.Triggered.ToString();
-            worksheet.Cell(row, 17).Value = policyMaking.Evidence;
-            worksheet.Cell(row, 18).Value = policyAdvocating.Triggered.ToString();
-            worksheet.Cell(row, 19).Value = policyAdvocating.Evidence;
-            worksheet.Cell(row, 20).Value = confidential.Triggered.ToString();
-            worksheet.Cell(row, 21).Value = confidential.Evidence;
-            worksheet.Cell(row, 22).Value = result.JustificationSummary;
-            worksheet.Cell(row, 23).Value = result.EvaluatedDate;
-            worksheet.Cell(row, 24).Value = wordFileName;
+            worksheet.Cell(row, 13).Value = result.OverallScore;
+            worksheet.Cell(row, 14).Value = result.CriteriaScores.Count(c => c.Triggered);
+            worksheet.Cell(row, 15).Value = policyDetermining.Triggered.ToString();
+            worksheet.Cell(row, 16).Value = policyDetermining.Evidence;
+            worksheet.Cell(row, 17).Value = policyMaking.Triggered.ToString();
+            worksheet.Cell(row, 18).Value = policyMaking.Evidence;
+            worksheet.Cell(row, 19).Value = policyAdvocating.Triggered.ToString();
+            worksheet.Cell(row, 20).Value = policyAdvocating.Evidence;
+            worksheet.Cell(row, 21).Value = confidential.Triggered.ToString();
+            worksheet.Cell(row, 22).Value = confidential.Evidence;
+            worksheet.Cell(row, 23).Value = result.JustificationSummary;
+            worksheet.Cell(row, 24).Value = result.EvaluatedDate;
+            worksheet.Cell(row, 25).Value = wordFileName;
 
             worksheet.Cell(row, 12).Style.Fill.BackgroundColor = GetRatingBackgroundColor(result.Rating);
             worksheet.Cell(row, 12).Style.Font.FontColor = GetRatingFontColor(result.Rating);
-            worksheet.Cell(row, 23).Style.DateFormat.Format = "yyyy-mm-dd";
+            worksheet.Cell(row, 13).Style.Fill.BackgroundColor = XLColor.FromHtml($"#{ScoreGradient.Background(result.OverallScore)}");
+            worksheet.Cell(row, 13).Style.Font.FontColor = XLColor.FromHtml($"#{ScoreGradient.Foreground(result.OverallScore)}");
+            worksheet.Cell(row, 24).Style.DateFormat.Format = "yyyy-mm-dd";
 
             row++;
         }

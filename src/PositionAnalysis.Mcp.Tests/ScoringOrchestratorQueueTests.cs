@@ -84,7 +84,7 @@ public class ScoringOrchestratorQueueTests
             CreatePositionDescription("PD-2", 2));
         var orchestrator = new ScoringOrchestrator(
             new SequencedAiClient(
-                new AiCompletionResult("", 0, false, "first PD failure"),
+                new AiCompletionResult("", 0, 0, false, ErrorMessage: "first PD failure"),
                 SuccessfulAiClient.Result),
             evaluationRepository,
             positionRepository,
@@ -149,9 +149,15 @@ public class ScoringOrchestratorQueueTests
                   "rating": "HIGH",
                   "justification": "Develops policy recommendations.",
                   "isCandidate": true,
-                  "criteria": []
+                  "criteria": [
+                    { "name": "Policy-Determining", "triggered": true,  "evidence": "Sets agency policy.", "supportingDutyNumbers": [1] },
+                    { "name": "Policy-Making",       "triggered": true,  "evidence": "Develops policy.",   "supportingDutyNumbers": [1] },
+                    { "name": "Policy-Advocating",   "triggered": true,  "evidence": "Advocates policy.",  "supportingDutyNumbers": [1] },
+                    { "name": "Confidential",        "triggered": false, "evidence": "",                   "supportingDutyNumbers": [] }
+                  ]
                 }
                 """,
+                0,
                 0,
                 true);
 

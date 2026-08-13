@@ -1,0 +1,57 @@
+[
+  {
+    "comment": "GPT-5.1 family — prices per 1,000 tokens (USD)",
+    "key": "gpt-5.1-codex-mini",
+    "inputPerK": 0.000250,
+    "outputPerK": 0.002000
+  },
+  {
+    "comment": "GPT-5.1 chat / codex / codex-max",
+    "key": "gpt-5.1",
+    "inputPerK": 0.001250,
+    "outputPerK": 0.010000
+  },
+  {
+    "key": "codex-max",
+    "inputPerK": 0.001250,
+    "outputPerK": 0.010000
+  },
+  {
+    "key": "codex-mini",
+    "inputPerK": 0.000250,
+    "outputPerK": 0.002000
+  },
+  {
+    "comment": "GPT-4o family",
+    "key": "gpt-4o-mini",
+    "inputPerK": 0.000150,
+    "outputPerK": 0.000600
+  },
+  {
+    "key": "gpt-4o",
+    "inputPerK": 0.002500,
+    "outputPerK": 0.010000
+  },
+  {
+    "comment": "GPT-4 family",
+    "key": "gpt-4-turbo",
+    "inputPerK": 0.010000,
+    "outputPerK": 0.030000
+  },
+  {
+    "key": "gpt-4",
+    "inputPerK": 0.030000,
+    "outputPerK": 0.060000
+  },
+  {
+    "comment": "GPT-3.5 family",
+    "key": "gpt-35-turbo",
+    "inputPerK": 0.000500,
+    "outputPerK": 0.001500
+  },
+  {
+    "key": "gpt-3.5-turbo",
+    "inputPerK": 0.000500,
+    "outputPerK": 0.001500
+  }
+]

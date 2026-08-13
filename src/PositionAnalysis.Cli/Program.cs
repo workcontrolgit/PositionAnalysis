@@ -12,6 +12,8 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 using System.Text.Json;
 
+Console.OutputEncoding = System.Text.Encoding.UTF8;
+
 var configuration = new ConfigurationBuilder()
     .SetBasePath(AppContext.BaseDirectory)
     .AddJsonFile("appsettings.json", optional: false)
@@ -36,6 +38,8 @@ try
     await mcpClient.StartAsync();
 
     using var processAllCancellation = new CancellationTokenSource();
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => mcpClient.KillProcess();
+
     Console.CancelKeyPress += (_, eventArgs) =>
     {
         eventArgs.Cancel = true;
@@ -45,7 +49,7 @@ try
             return;
         }
 
-        mcpClient.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        mcpClient.KillProcess();
         Environment.Exit(0);
     };
 
@@ -98,7 +102,7 @@ try
 catch (Exception ex)
 {
     Log.Fatal(ex, "Unhandled exception in PositionAnalysisChatClient");
-    AnsiConsole.MarkupLine($"[red]Γ¥î Fatal error:[/] {Markup.Escape(ex.Message)}");
+    AnsiConsole.MarkupLine($"[red]\u274c Fatal error:[/] {Markup.Escape(ex.Message)}");
     AnsiConsole.MarkupLine("[grey]Details logged to logs/error-*.log[/]");
     Environment.ExitCode = 1;
 }
@@ -107,7 +111,7 @@ finally
     await Log.CloseAndFlushAsync();
 }
 
-// ΓöÇΓöÇ Helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// \u2500\u2500 Helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 static IChatClient BuildChatClient(IConfiguration config, string provider)
 {
@@ -139,12 +143,12 @@ static IChatClient BuildChatClient(IConfiguration config, string provider)
     {
         var aoaiEndpoint = config["AI:AzureOpenAI:Endpoint"]
             ?? throw new InvalidOperationException(
-                "Missing AI:AzureOpenAI:Endpoint ΓÇö set it in user secrets:\n" +
+                "Missing AI:AzureOpenAI:Endpoint — set it in user secrets:\n" +
                 "  dotnet user-secrets set \"AI:AzureOpenAI:Endpoint\" \"https://<resource>.cognitiveservices.azure.com/\"");
         var aoaiDeployment = config["AI:AzureOpenAI:DeploymentName"] ?? "gpt-4o";
         var aoaiApiKey = config["AI:AzureOpenAI:ApiKey"]
             ?? throw new InvalidOperationException(
-                "Missing AI:AzureOpenAI:ApiKey ΓÇö set it in user secrets:\n" +
+                "Missing AI:AzureOpenAI:ApiKey — set it in user secrets:\n" +
                 "  dotnet user-secrets set \"AI:AzureOpenAI:ApiKey\" \"<your-key>\"");
 
         return new AzureOpenAIClient(
@@ -157,12 +161,12 @@ static IChatClient BuildChatClient(IConfiguration config, string provider)
     // Default: Claude via Azure AI Foundry
     var claudeEndpoint = config["AI:Claude:Endpoint"]
         ?? throw new InvalidOperationException(
-            "Missing AI:Claude:Endpoint ΓÇö set it in user secrets:\n" +
+            "Missing AI:Claude:Endpoint — set it in user secrets:\n" +
             "  dotnet user-secrets set \"AI:Claude:Endpoint\" \"https://<resource>.services.ai.azure.com/anthropic/v1/messages\"");
     var claudeDeployment = config["AI:Claude:DeploymentName"] ?? "claude-opus-4-6";
     var claudeApiKey = config["AI:Claude:ApiKey"]
         ?? throw new InvalidOperationException(
-            "Missing AI:Claude:ApiKey ΓÇö set it in user secrets:\n" +
+            "Missing AI:Claude:ApiKey — set it in user secrets:\n" +
             "  dotnet user-secrets set \"AI:Claude:ApiKey\" \"<your-key>\"");
 
     return new AzureClaudeClient(
@@ -226,7 +230,7 @@ class PositionAnalysisChatClient
         while (true)
         {
             AnsiConsole.Write(new Rule().RuleStyle("grey"));
-            AnsiConsole.Markup("[bold yellow]You ΓÇ║[/] ");
+            AnsiConsole.Markup("[bold yellow]You ▶[/] ");
             string? userInput = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(userInput))
@@ -234,7 +238,7 @@ class PositionAnalysisChatClient
 
             if (userInput.Equals("exit", StringComparison.OrdinalIgnoreCase))
             {
-                AnsiConsole.MarkupLine("\n[green]Γ£ô[/] Exiting Schedule PC Chat Client.");
+                AnsiConsole.MarkupLine("\n[green]\u2714[/] Exiting Schedule PC Chat Client.");
                 break;
             }
 
@@ -378,7 +382,7 @@ class PositionAnalysisChatClient
     {
         var result = await _mcpClient.CallToolAsync("process_all_pds", new { });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "processing_started" : "processing_started";
-        AnsiConsole.MarkupLine($"[green]{Markup.Escape(status)}[/] ΓÇö scoring all staged PDs across all series.");
+        AnsiConsole.MarkupLine($"[green]{Markup.Escape(status)}[/] — scoring all staged PDs across all series.");
     }
 
     private async Task ClearSchedulePcEvalAsync()
@@ -1017,6 +1021,16 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
         }
     }
 
+    public void KillProcess()
+    {
+        try
+        {
+            if (_process != null && !_process.HasExited)
+                _process.Kill(entireProcessTree: true);
+        }
+        catch { }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_process == null)
@@ -1024,20 +1038,11 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
 
         try
         {
-            if (!_process.HasExited)
-            {
-                await _process.StandardInput.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"id\":9999,\"method\":\"shutdown\"}");
-                await _process.StandardInput.FlushAsync();
-                _process.Kill(entireProcessTree: true);
-            }
-        }
-        catch
-        {
-            // no-op during shutdown
+            KillProcess();
         }
         finally
         {
-            _process.Dispose();
+            _process?.Dispose();
             _process = null;
             _requestLock.Dispose();
         }

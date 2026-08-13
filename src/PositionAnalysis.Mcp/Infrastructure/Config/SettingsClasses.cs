@@ -34,6 +34,10 @@ public class AzureOpenAiSettings
     public string DeploymentName { get; set; } = string.Empty;
     public int MaxCompletionTokens { get; set; } = 16384;
     public double Temperature { get; set; } = 0.7;
+    /// <summary>Cost per 1,000 input tokens (USD). Overrides the built-in pricing table when non-zero.</summary>
+    public decimal CostPerInputTokenK { get; set; } = 0m;
+    /// <summary>Cost per 1,000 output tokens (USD). Overrides the built-in pricing table when non-zero.</summary>
+    public decimal CostPerOutputTokenK { get; set; } = 0m;
 }
 
 /// <summary>
