@@ -25,4 +25,19 @@ public class ProcessingStatusService : IProcessingStatusService
         var all = await _reportingService.GetProcessingReportAsync();
         return all.TryGetValue(series, out var status) ? status : null;
     }
+
+    public Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusBySeriesAsync(IEnumerable<string> series)
+    {
+        return _reportingService.GetProcessingReportBySeriesAsync(series);
+    }
+
+    public Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStatusByOrgCodesAsync(IEnumerable<string> orgCodes)
+    {
+        return _reportingService.GetProcessingReportByOrgCodesAsync(orgCodes);
+    }
+
+    public Task<List<PdProcessingStatus>> GetStatusByPdNumbersAsync(IEnumerable<string> pdNumbers)
+    {
+        return _reportingService.GetProcessingStatusByPdNumbersAsync(pdNumbers);
+    }
 }

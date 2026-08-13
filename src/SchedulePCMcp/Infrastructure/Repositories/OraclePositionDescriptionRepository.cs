@@ -236,7 +236,8 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
              SELECT header.pd_seq_num, header.pd_nbr, header.pd_position_title_text, header.gvt_occ_series,
                  header.grd_code, header.pd_origin_org_code, header.org_desc, header.pd_intro,
                  header.gvt_pay_plan, header.pd_manager_level, header.position_sensitivity,
-                 header.gm_public_trust, header.position_occupied_code, header.bureau_code, header.bureau_desc
+                 header.gm_public_trust, header.position_occupied_code, header.bureau_code, header.bureau_desc,
+                 header.pd_effective_date
              FROM temp_pd_sched_pc header
              WHERE header.pd_nbr = :pdNbr
             AND {EligibleDutiesExistsPredicate}";
@@ -285,6 +286,7 @@ public class OraclePositionDescriptionRepository : IPositionDescriptionRepositor
             PositionSensitivity = pdReader.IsDBNull(10) ? string.Empty : pdReader.GetValue(10).ToString() ?? string.Empty,
             PublicTrust = pdReader.IsDBNull(11) ? string.Empty : pdReader.GetValue(11).ToString() ?? string.Empty,
             ServiceCategory = pdReader.IsDBNull(12) ? string.Empty : pdReader.GetValue(12).ToString() ?? string.Empty,
+            EffectiveDate = pdReader.IsDBNull(15) ? string.Empty : pdReader.GetValue(15).ToString() ?? string.Empty,
             IntroText = introText,
             Duties = new List<MajorDuty>(),
             CreatedDate = DateTime.UtcNow

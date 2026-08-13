@@ -14,32 +14,17 @@ public class ExportResultsToolHandler : IMcpToolHandler
 
     public string Name => "export_results";
 
-    public string Description => "Export evaluation results to Excel for all or selected series";
+    public string Description => "Export ALL evaluation results to Excel with no filtering. Do NOT use this if the user names specific series, org codes, or PD numbers — use export_results_by_series, export_results_by_orgs, or export_results_by_pd instead.";
 
     public object InputSchema => new
     {
         type = "object",
-        properties = new
-        {
-            series = new
-            {
-                type = "array",
-                items = new { type = "string" }
-            }
-        }
+        properties = new { }
     };
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var series = arguments.GetStringList("series");
-        if (series.Count == 0)
-        {
-            await _exportOrchestrator.ExportAllAsync();
-        }
-        else
-        {
-            await _exportOrchestrator.ExportBySeriesAsync(series);
-        }
+        await _exportOrchestrator.ExportAllAsync();
 
         var status = await _exportOrchestrator.GetExportStatusAsync();
 

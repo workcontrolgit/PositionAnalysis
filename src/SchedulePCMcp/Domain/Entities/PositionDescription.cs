@@ -21,6 +21,7 @@ public class PositionDescription
     public string PositionSensitivity { get; set; } = string.Empty;
     public string PublicTrust { get; set; } = string.Empty;
     public string ServiceCategory { get; set; } = string.Empty;
+    public string EffectiveDate { get; set; } = string.Empty;
     public string IntroText { get; set; } = string.Empty;
     public List<MajorDuty> Duties { get; set; } = new();
     public DateTime CreatedDate { get; set; }

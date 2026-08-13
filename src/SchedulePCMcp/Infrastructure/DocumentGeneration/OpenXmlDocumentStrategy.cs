@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 using System.Xml;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -101,22 +102,19 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         var ratingLabel    = $"{result.Rating} -- {triggeredCount} of 4 criteria met";
         var evalDate       = result.EvaluatedDate.ToString("yyyy-MM-dd");
 
-        // PD_ORIGIN_ORG_CODE/ORG_DESC are unpopulated for all rows in the current source data;
-        // fall back to BUREAU_CODE/BUREAU_DESC (populated for ~97% of rows) so the fields aren't blank.
-        var orgCode = string.IsNullOrWhiteSpace(pd.OrganizationCode) ? pd.BureauCode : pd.OrganizationCode;
-        var orgName = string.IsNullOrWhiteSpace(pd.OrganizationName)
-            ? (string.IsNullOrWhiteSpace(pd.BureauName) ? orgCode : pd.BureauName)
-            : pd.OrganizationName;
+        var bureauOrgDisplay = FormatBureauOrgDisplay(pd);
 
         // Section 1
         SetSdtText(allSdts, nsm, 0, result.PdNbr);
         SetSdtText(allSdts, nsm, 1, evalDate);
         SetSdtText(allSdts, nsm, 2, pd.Title);
         SetRatingCell(doc, nsm, allSdts, 3, ratingLabel, ratingBg, ratingFg);
-        SetSdtText(allSdts, nsm, 4, orgCode);
+        SetSdtText(allSdts, nsm, 4, bureauOrgDisplay);
         SetSdtText(allSdts, nsm, 5, $"{pd.PayPlan}-{pd.Series}-{pd.Grade}");
         SetSdtText(allSdts, nsm, 6, "Competitive");
-        SetSdtText(allSdts, nsm, 7, pd.IntroText);
+        // Fall back to the raw PD intro for results scored before positionPurpose was captured.
+        SetSdtText(allSdts, nsm, 7, string.IsNullOrWhiteSpace(result.PositionPurpose) ? pd.IntroText : result.PositionPurpose);
+
 
         // Section 2: 4 criteria in fixed order
         var criteriaOrder = new[] {
@@ -143,26 +141,84 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         SetCheckbox  (allSdts, nsm, 23, !result.IsCandidate);
         SetRatingCell(doc, nsm, allSdts, 24, ratingLabel, ratingBg, ratingFg);
         SetSdtText   (allSdts, nsm, 25, result.JustificationSummary);
-        SetSdtText   (allSdts, nsm, 26, "AI Agent");
+        // SDT 26 (Evaluator Name & Date) is left as the template placeholder for manual entry.
         SetSdtText   (allSdts, nsm, 27, "(Pending Human Review)");
 
         // Appendix A
         SetSdtText(allSdts, nsm, 28, result.PdNbr);
         SetSdtText(allSdts, nsm, 29, pd.Title);
-        SetSdtText(allSdts, nsm, 30, orgName);
-        SetSdtText(allSdts, nsm, 31, orgCode);
-        SetSdtText(allSdts, nsm, 32, "GS");
+        SetSdtText(allSdts, nsm, 30, FormatCodeParenDescription(pd.BureauCode, pd.BureauName));
+        SetSdtText(allSdts, nsm, 31, FormatCodeParenDescription(pd.OrganizationCode, pd.OrganizationName));
+        SetSdtText(allSdts, nsm, 32, pd.PayPlan);
         SetSdtText(allSdts, nsm, 33, pd.Series.ToString());
         SetSdtText(allSdts, nsm, 34, pd.Grade.ToString());
-        SetSdtText(allSdts, nsm, 35, evalDate);
-        SetSdtText(allSdts, nsm, 36, "(not provided)");
-        SetSdtText(allSdts, nsm, 37, "(not provided)");
-        SetSdtText(allSdts, nsm, 38, "(not provided)");
+        SetSdtText(allSdts, nsm, 35, FormatEffectiveDate(pd.EffectiveDate));
+        SetSdtText(allSdts, nsm, 36, FormatCodeWithLabel(pd.ManagerLevel, GetManagerLevelLabel(pd.ManagerLevel)));
+        SetSdtText(allSdts, nsm, 37, FormatCodeWithLabel(pd.PositionSensitivity, GetSensitivityLabel(pd.PositionSensitivity)));
+        SetSdtText(allSdts, nsm, 38, FormatCodeWithLabel(pd.PublicTrust, GetPublicTrustLabel(pd.PublicTrust)));
         SetSdtText(allSdts, nsm, 39, "Competitive");
 
         // Appendix B
         FillAppendixB(doc, nsm, allSdts, pd, result);
     }
+
+    private static string FormatBureauOrgDisplay(PositionDescription pd)
+    {
+        // Section 1 "Bureau/Org Code" shows "(code) description / (code) description" e.g. "(130000) EAP / (130200) EAP/EX".
+        var bureau = FormatCodeParenDescription(pd.BureauCode, pd.BureauName);
+        var org = FormatCodeParenDescription(pd.OrganizationCode, pd.OrganizationName);
+
+        if (string.IsNullOrWhiteSpace(bureau)) return org;
+        if (string.IsNullOrWhiteSpace(org)) return bureau;
+        return $"{bureau} / {org}";
+    }
+
+    private static string FormatCodeParenDescription(string? code, string? description)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return description ?? string.Empty;
+        return string.IsNullOrWhiteSpace(description) ? $"({code})" : $"({code}) {description}";
+    }
+
+    private static string FormatCodeWithLabel(string? code, string label)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return "(not provided)";
+        return string.IsNullOrEmpty(label) ? code : $"{code} ({label})";
+    }
+
+    private static string FormatEffectiveDate(string? rawDate)
+    {
+        if (string.IsNullOrWhiteSpace(rawDate)) return "(not provided)";
+        return DateTime.TryParse(rawDate, out var parsed) ? parsed.ToString("yyyy-MM-dd") : rawDate.Trim();
+    }
+
+    private static string GetManagerLevelLabel(string? code) => code switch
+    {
+        "2" => "Supervisor or Manager",
+        "4" => "Supervisor (CSRA)",
+        "5" => "Management Official (CSRA)",
+        "6" => "Leader",
+        "7" => "Team Leader",
+        "8" => "All Other Positions",
+        _ => string.Empty
+    };
+
+    private static string GetSensitivityLabel(string? code) => code switch
+    {
+        "1" => "Non-Sensitive",
+        "2" => "Non-Critical Sensitive",
+        "3" => "Critical Sensitive",
+        "4" => "Special Sensitive",
+        _ => string.Empty
+    };
+
+    private static string GetPublicTrustLabel(string? code) => code switch
+    {
+        "9" => "High Risk",
+        "10" => "Mod Risk",
+        "11" => "Low Risk",
+        "99" => "No Risk",
+        _ => string.Empty
+    };
 
     private static void SetSdtText(
         XmlNode[] allSdts, XmlNamespaceManager nsm, int index, string value)
@@ -285,17 +341,21 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
             return;
         }
 
-        var triggeredCriteriaNames = result.CriteriaScores
-            .Where(c => c.Triggered)
-            .Select(c => c.CriterionName)
-            .ToList();
-
         foreach (var duty in pd.Duties)
         {
             var dutyText  = string.IsNullOrWhiteSpace(duty.Text) ? "(duty text not provided)" : duty.Text;
             var dutyLabel = $"Duty #{duty.SequenceNumber}: {dutyText}";
-            var metaText  = triggeredCriteriaNames.Count > 0
-                ? $"Supports: {string.Join(", ", triggeredCriteriaNames)}"
+
+            // Prefer the LLM's own duty-number attribution; fall back to evidence-text matching for
+            // results scored before supportingDutyNumbers was captured.
+            var supportingCriteria = result.CriteriaScores
+                .Where(c => c.Triggered && (c.SupportingDutyNumbers.Count > 0
+                    ? c.SupportingDutyNumbers.Contains(duty.SequenceNumber)
+                    : DutySupportsCriterion(dutyText, c.Evidence)))
+                .Select(c => c.CriterionName)
+                .ToList();
+            var metaText  = supportingCriteria.Count > 0
+                ? $"Supports: {string.Join(", ", supportingCriteria)}"
                 : "No direct support finding.";
 
             var newRow  = templateRow.CloneNode(deep: true);
@@ -311,6 +371,30 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
 
         templateRow.ParentNode!.RemoveChild(templateRow);
     }
+
+    private static bool DutySupportsCriterion(string dutyText, string evidence)
+    {
+        if (string.IsNullOrWhiteSpace(dutyText) || string.IsNullOrWhiteSpace(evidence)) return false;
+
+        var normalizedDuty     = NormalizeForMatch(dutyText);
+        var normalizedEvidence = NormalizeForMatch(evidence);
+        if (normalizedEvidence.Length == 0) return false;
+
+        if (normalizedDuty.Contains(normalizedEvidence, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Evidence quotes may be lightly paraphrased; require most significant words to appear in the duty text.
+        var evidenceWords = normalizedEvidence.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 5)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (evidenceWords.Length == 0) return false;
+
+        var matchCount = evidenceWords.Count(w => normalizedDuty.Contains(w, StringComparison.OrdinalIgnoreCase));
+        return matchCount / (double)evidenceWords.Length >= 0.6;
+    }
+
+    private static string NormalizeForMatch(string text) => Regex.Replace(text, @"[^\w\s]", "").Trim();
 
     private static void SetSdtNodeText(XmlNamespaceManager nsm, XmlNode sdt, string value)
     {

@@ -11,10 +11,12 @@ namespace SchedulePCMcp.Application.Services;
 public class ReportingService : IReportingService
 {
     private readonly ISchedulePCEvalRepository _evalRepository;
+    private readonly IPositionDescriptionRepository _pdRepository;
 
-    public ReportingService(ISchedulePCEvalRepository evalRepository)
+    public ReportingService(ISchedulePCEvalRepository evalRepository, IPositionDescriptionRepository pdRepository)
     {
         _evalRepository = evalRepository ?? throw new ArgumentNullException(nameof(evalRepository));
+        _pdRepository = pdRepository ?? throw new ArgumentNullException(nameof(pdRepository));
     }
 
     public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync()
@@ -34,6 +36,65 @@ public class ReportingService : IReportingService
     {
         var results = await _evalRepository.GetAllAsync();
         return BuildSeriesStatus(results, stagedOnly: false);
+    }
+
+    public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportBySeriesAsync(IEnumerable<string> series)
+    {
+        var seriesCodes = new HashSet<string>(series ?? throw new ArgumentNullException(nameof(series)), StringComparer.OrdinalIgnoreCase);
+        var results = await _evalRepository.GetAllAsync();
+        var filtered = results.Where(r => seriesCodes.Contains(r.Series.Code));
+        return BuildSeriesStatus(filtered, stagedOnly: false);
+    }
+
+    public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportByOrgCodesAsync(IEnumerable<string> orgCodes)
+    {
+        var orgCodeList = (orgCodes ?? throw new ArgumentNullException(nameof(orgCodes)))
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o.Trim())
+            .ToList();
+
+        var results = await _evalRepository.GetAllAsync();
+        var filtered = new List<Domain.Entities.EvaluationResult>();
+
+        foreach (var result in results)
+        {
+            var pd = await _pdRepository.GetByPdNbrAsync(result.PdNbr);
+            if (pd == null) continue;
+
+            var matches = orgCodeList.Any(code =>
+                string.Equals(pd.OrganizationCode, code, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(pd.BureauCode, code, StringComparison.OrdinalIgnoreCase));
+
+            if (matches)
+                filtered.Add(result);
+        }
+
+        return BuildSeriesStatus(filtered, stagedOnly: false);
+    }
+
+    public async Task<List<PdProcessingStatus>> GetProcessingStatusByPdNumbersAsync(IEnumerable<string> pdNumbers)
+    {
+        var pdNbrList = (pdNumbers ?? throw new ArgumentNullException(nameof(pdNumbers)))
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var statuses = new List<PdProcessingStatus>();
+        foreach (var pdNbr in pdNbrList)
+        {
+            var result = await _evalRepository.GetByPdAsync(pdNbr);
+            if (result == null)
+            {
+                statuses.Add(new PdProcessingStatus(pdNbr, string.Empty, "NOT_FOUND", string.Empty));
+                continue;
+            }
+
+            var status = ResolveStatus(result.Rating);
+            statuses.Add(new PdProcessingStatus(result.PdNbr, result.Series.Code, status.ToString(), result.Rating));
+        }
+
+        return statuses;
     }
 
     private static Dictionary<OccupationalSeries, SeriesStatus> BuildSeriesStatus(
