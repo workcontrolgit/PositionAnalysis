@@ -81,7 +81,8 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
                 justification_summary = :justification,
                 result_json = :resultJson,
                 scored_at = SYSTIMESTAMP,
-                error_msg = :errorMsg
+                error_msg = :errorMsg,
+                needs_rescore = 'N'
             WHERE pd_nbr = :pdNbr AND series = :series";
 
         using var cmd = new OracleCommand(sql, connection)
@@ -386,6 +387,149 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
         }
 
         _logger.LogInformation("Retrieved {Count} evaluation results with status {Status}", results.Count, status);
+        return results;
+    }
+
+    public async Task<List<EvaluationResult>> GetNeedsRescoreAsync()
+    {
+        _logger.LogInformation("Fetching evaluation results flagged needs_rescore");
+
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            SELECT pd_nbr,
+                   series AS occ_series,
+                   TO_NUMBER(grade) AS grade,
+                   CAST(0 AS NUMBER) AS overall_score,
+                   rating,
+                   is_candidate,
+                   justification_summary,
+                   result_json,
+                   NVL(CAST(scored_at AS DATE), SYSDATE) AS evaluated_date
+            FROM schedule_pc_eval
+            WHERE needs_rescore = 'Y'
+            ORDER BY pd_nbr";
+
+        using var cmd = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout
+        };
+
+        var results = new List<EvaluationResult>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var result = MapEvaluationResult(reader);
+            if (result is not null)
+                results.Add(result);
+        }
+
+        _logger.LogInformation("Retrieved {Count} evaluation results flagged needs_rescore", results.Count);
+        return results;
+    }
+
+    public async Task<List<EvaluationResult>> GetNeedsRescoreBySeriesAsync(IEnumerable<string> series)
+    {
+        var seriesList = (series ?? throw new ArgumentNullException(nameof(series)))
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (seriesList.Count == 0)
+            return new List<EvaluationResult>();
+
+        _logger.LogInformation("Fetching needs_rescore evaluation results for {Count} series", seriesList.Count);
+
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        var seriesParamNames = seriesList.Select((_, i) => $":series{i}").ToList();
+        var sql = $@"
+            SELECT pd_nbr,
+                   series AS occ_series,
+                   TO_NUMBER(grade) AS grade,
+                   CAST(0 AS NUMBER) AS overall_score,
+                   rating,
+                   is_candidate,
+                   justification_summary,
+                   result_json,
+                   NVL(CAST(scored_at AS DATE), SYSDATE) AS evaluated_date
+            FROM schedule_pc_eval
+            WHERE needs_rescore = 'Y'
+              AND series IN ({string.Join(",", seriesParamNames)})
+            ORDER BY pd_nbr";
+
+        using var cmd = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout
+        };
+        for (int i = 0; i < seriesList.Count; i++)
+            cmd.Parameters.Add(seriesParamNames[i], seriesList[i]);
+
+        var results = new List<EvaluationResult>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var result = MapEvaluationResult(reader);
+            if (result is not null)
+                results.Add(result);
+        }
+
+        _logger.LogInformation("Retrieved {Count} needs_rescore evaluation results for requested series", results.Count);
+        return results;
+    }
+
+    public async Task<List<EvaluationResult>> GetNeedsRescoreByPdNumbersAsync(IEnumerable<string> pdNumbers)
+    {
+        var pdNbrList = (pdNumbers ?? throw new ArgumentNullException(nameof(pdNumbers)))
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (pdNbrList.Count == 0)
+            return new List<EvaluationResult>();
+
+        _logger.LogInformation("Fetching needs_rescore evaluation results for {Count} PD number(s)", pdNbrList.Count);
+
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        var pdParamNames = pdNbrList.Select((_, i) => $":pdNbr{i}").ToList();
+        var sql = $@"
+            SELECT pd_nbr,
+                   series AS occ_series,
+                   TO_NUMBER(grade) AS grade,
+                   CAST(0 AS NUMBER) AS overall_score,
+                   rating,
+                   is_candidate,
+                   justification_summary,
+                   result_json,
+                   NVL(CAST(scored_at AS DATE), SYSDATE) AS evaluated_date
+            FROM schedule_pc_eval
+            WHERE needs_rescore = 'Y'
+              AND pd_nbr IN ({string.Join(",", pdParamNames)})
+            ORDER BY pd_nbr";
+
+        using var cmd = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout
+        };
+        for (int i = 0; i < pdNbrList.Count; i++)
+            cmd.Parameters.Add(pdParamNames[i], pdNbrList[i]);
+
+        var results = new List<EvaluationResult>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var result = MapEvaluationResult(reader);
+            if (result is not null)
+                results.Add(result);
+        }
+
+        _logger.LogInformation("Retrieved {Count} needs_rescore evaluation results for requested PD numbers", results.Count);
         return results;
     }
 

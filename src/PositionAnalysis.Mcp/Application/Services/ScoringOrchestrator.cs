@@ -236,6 +236,74 @@ Be objective and ground every finding in specific language from the duties text.
         await RescoreBySeriesAsync(allSeries);
     }
 
+    public async Task RescoreFlaggedAsync()
+    {
+        var flagged = await _evalRepository.GetNeedsRescoreAsync();
+        await RescoreFlaggedResultsAsync(flagged, "needs_rescore");
+    }
+
+    public async Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series)
+    {
+        if (series == null)
+            throw new ArgumentNullException(nameof(series));
+
+        var seriesList = series.ToList();
+        if (seriesList.Count == 0)
+        {
+            _logger.LogWarning("No series provided for flagged rescore");
+            return;
+        }
+
+        var flagged = await _evalRepository.GetNeedsRescoreBySeriesAsync(seriesList);
+        await RescoreFlaggedResultsAsync(flagged, $"needs_rescore in series {string.Join(", ", seriesList)}");
+    }
+
+    public async Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers)
+    {
+        if (pdNumbers == null)
+            throw new ArgumentNullException(nameof(pdNumbers));
+
+        var pdNbrList = pdNumbers.ToList();
+        if (pdNbrList.Count == 0)
+        {
+            _logger.LogWarning("No PD numbers provided for flagged rescore");
+            return;
+        }
+
+        var flagged = await _evalRepository.GetNeedsRescoreByPdNumbersAsync(pdNbrList);
+        await RescoreFlaggedResultsAsync(flagged, $"needs_rescore for requested PD number(s)");
+    }
+
+    private async Task RescoreFlaggedResultsAsync(List<EvaluationResult> flagged, string context)
+    {
+        if (flagged.Count == 0)
+        {
+            _logger.LogInformation("RescoreFlagged: no PDs flagged {Context}", context);
+            return;
+        }
+
+        _logger.LogInformation("RescoreFlagged: rescoring {Count} PDs flagged {Context}", flagged.Count, context);
+
+        int totalScored = 0;
+        int totalFailed = 0;
+
+        foreach (var result in flagged)
+        {
+            try
+            {
+                await ScoreAsync(result.PdNbr);
+                totalScored++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to rescore flagged PD {PdNbr}", result.PdNbr);
+                totalFailed++;
+            }
+        }
+
+        _logger.LogInformation("RescoreFlagged completed for {Context}: {Scored} scored, {Failed} failed", context, totalScored, totalFailed);
+    }
+
     /// <summary>
     /// Scores all PENDING Position Descriptions across every staged series
     /// </summary>

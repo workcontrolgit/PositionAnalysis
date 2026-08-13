@@ -57,6 +57,21 @@ public interface IScoringOrchestrator
     Task RescoreAllAsync();
 
     /// <summary>
+    /// Forces a fresh rescore of every PD flagged needs_rescore = 'Y'
+    /// </summary>
+    Task RescoreFlaggedAsync();
+
+    /// <summary>
+    /// Forces a fresh rescore of PDs flagged needs_rescore = 'Y' within the specified series
+    /// </summary>
+    Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series);
+
+    /// <summary>
+    /// Forces a fresh rescore of the specified PDs, but only those flagged needs_rescore = 'Y'
+    /// </summary>
+    Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers);
+
+    /// <summary>
     /// Retrieves the evaluation result for a specific PD
     /// </summary>
     /// <param name="pdNbr">The position description number</param>

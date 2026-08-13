@@ -39,6 +39,9 @@ public class ProcessAllRunStatusServiceTests
         public Task ScoreAllAsync() => Task.CompletedTask;
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task RescoreAllAsync() => Task.CompletedTask;
+        public Task RescoreFlaggedAsync() => Task.CompletedTask;
+        public Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
+        public Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers) => Task.CompletedTask;
         public Task<Domain.Entities.EvaluationResult?> GetResultAsync(string pdNbr) => Task.FromResult<Domain.Entities.EvaluationResult?>(null);
     }
 }

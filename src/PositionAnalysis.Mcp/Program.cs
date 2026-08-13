@@ -127,6 +127,10 @@ public class Program
                 services.AddScoped<IMcpToolHandler, RescorePdToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescorePdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreAllPdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsBySeriesToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsByPdToolHandler>();
+                services.AddScoped<IMcpToolHandler, GetNeedsRescoreCountToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreHumanSchedulePcPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ClearSchedulePcEvalToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
