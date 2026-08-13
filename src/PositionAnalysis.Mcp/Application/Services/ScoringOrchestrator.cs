@@ -443,10 +443,10 @@ positionPurpose must be descriptive, not evaluative, and should synthesize both 
                 evaluationResult.OverallScore = Math.Clamp(score, 0, 100);
             }
 
+            string? aiReportedRating = null;
             if (root.TryGetProperty("rating", out var ratingElement) && ratingElement.ValueKind == JsonValueKind.String)
             {
-                var rating = ratingElement.GetString()?.ToUpper() ?? "DOES_NOT_MEET";
-                evaluationResult.Rating = ValidateRating(rating);
+                aiReportedRating = ratingElement.GetString()?.ToUpper();
             }
 
             if (root.TryGetProperty("justification", out var justElement) && justElement.ValueKind == JsonValueKind.String)
@@ -492,6 +492,23 @@ positionPurpose must be descriptive, not evaluative, and should synthesize both 
                 }
             }
 
+            // Rating is derived from the triggered-criteria count, not the LLM's own rating field,
+            // so the label displayed to reviewers can never contradict the criteria-met count.
+            var triggeredCount = evaluationResult.CriteriaScores.Count(c => c.Triggered);
+            evaluationResult.Rating = triggeredCount switch
+            {
+                >= 3 => "HIGH",
+                1 or 2 => "MEDIUM",
+                _ => "LOW"
+            };
+
+            if (aiReportedRating != null && !string.Equals(aiReportedRating, evaluationResult.Rating, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "PD {PdNbr}: AI-reported rating {AiRating} overridden by derived rating {DerivedRating} ({TriggeredCount} criteria triggered)",
+                    pd.PdNbr, aiReportedRating, evaluationResult.Rating, triggeredCount);
+            }
+
             if (root.TryGetProperty("isCandidate", out var isCandEl) &&
                 (isCandEl.ValueKind == JsonValueKind.True || isCandEl.ValueKind == JsonValueKind.False))
                 evaluationResult.IsCandidate = isCandEl.GetBoolean();
@@ -513,24 +530,13 @@ positionPurpose must be descriptive, not evaluative, and should synthesize both 
         return evaluationResult;
     }
 
-    private string ValidateRating(string rating)
-    {
-        return rating switch
-        {
-            "HIGH" => "HIGH",
-            "MEDIUM" => "MEDIUM",
-            "LOW" => "LOW",
-            "DOES_NOT_MEET" => "DOES_NOT_MEET",
-            _ => "DOES_NOT_MEET"
-        };
-    }
-
     private void LogLlmCost(string pdNbr, AiCompletionResult aiResult)
     {
         _logger.LogInformation(
             "PD {PdNbr} LLM cost: {PromptTokens:N0} prompt + {CompletionTokens:N0} completion = {TotalTokens:N0} tokens, ~${Cost:F4}",
             pdNbr, aiResult.PromptTokens, aiResult.CompletionTokens, aiResult.TokensUsed, aiResult.EstimatedCostUsd);
     }
+
 
     private async Task UpdateResultStatusAsync(string pdNbr, string status, string errorMessage)
     {

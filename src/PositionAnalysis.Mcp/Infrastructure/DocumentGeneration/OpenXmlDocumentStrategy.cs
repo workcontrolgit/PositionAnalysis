@@ -97,9 +97,9 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         XmlDocument doc, XmlNamespaceManager nsm,
         XmlNode[] allSdts, EvaluationResult result, PositionDescription pd)
     {
-        var (ratingBg, ratingFg) = GetRatingColors(result.Rating);
+        var (ratingBg, ratingFg) = GetScoreColors(result.OverallScore);
         var triggeredCount = result.CriteriaScores.Count(c => c.Triggered);
-        var ratingLabel    = $"{result.Rating} -- {triggeredCount} of 4 criteria met";
+        var ratingLabel    = $"{result.Rating} -- {triggeredCount} of 4 criteria met (AI Score: {result.OverallScore:F0}/100)";
         var evalDate       = result.EvaluatedDate.ToString("yyyy-MM-dd");
 
         var bureauOrgDisplay = FormatBureauOrgDisplay(pd);
@@ -414,14 +414,31 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         }
     }
 
-    private static (string bg, string fg) GetRatingColors(string rating) =>
-        rating.ToUpperInvariant() switch
-        {
-            "HIGH"       => ("E2F0D9", "1E4620"),
-            "MEDIUM"     => ("FFF2CC", "5C4300"),
-            "BORDERLINE" => ("FCE8B2", "7B4F00"),
-            _            => ("FCE4D6", "801414")
-        };
+    // Continuous red->yellow->green gradient driven by the AI's 0-100 numeric score, so two
+    // positions sharing the same HIGH/MEDIUM bucket still show visibly distinct shades.
+    private static (string bg, string fg) GetScoreColors(decimal score) =>
+        (ScoreGradient.Background(score), ScoreGradient.Foreground(score));
+}
+
+internal static class ScoreGradient
+{
+    private static readonly (byte R, byte G, byte B) Red    = (0xF8, 0x69, 0x6B);
+    private static readonly (byte R, byte G, byte B) Yellow = (0xFF, 0xEB, 0x84);
+    private static readonly (byte R, byte G, byte B) Green  = (0x63, 0xBE, 0x7B);
+
+    public static string Background(decimal score)
+    {
+        var clamped = (double)Math.Clamp(score, 0, 100);
+        var (r, g, b) = clamped <= 50
+            ? Lerp(Red, Yellow, clamped / 50.0)
+            : Lerp(Yellow, Green, (clamped - 50) / 50.0);
+        return $"{r:X2}{g:X2}{b:X2}";
+    }
+
+    public static string Foreground(decimal score) => score >= 50 ? "1E4620" : "801414";
+
+    private static (byte R, byte G, byte B) Lerp((byte R, byte G, byte B) a, (byte R, byte G, byte B) b, double t) =>
+        ((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
 }
 
 /// <summary>
