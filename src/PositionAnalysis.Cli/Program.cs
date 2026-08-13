@@ -230,7 +230,7 @@ class PositionAnalysisChatClient
         while (true)
         {
             AnsiConsole.Write(new Rule().RuleStyle("grey"));
-            AnsiConsole.Markup("[bold yellow]You ║[/] ");
+            AnsiConsole.Markup("[bold yellow]You ▶[/] ");
             string? userInput = Console.ReadLine();
 
             if (string.IsNullOrWhiteSpace(userInput))
