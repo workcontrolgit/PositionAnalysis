@@ -17,7 +17,7 @@ public class GenerateDocumentsByOrgsToolHandler : IMcpToolHandler
 
     public string Name => "generate_documents_by_orgs";
 
-    public string Description => "Generate Word evaluation documents for completed evaluations matching the specified bureau or org codes";
+    public string Description => "Generate Word evaluation documents filtered to ONLY completed evaluations matching the given bureau/org codes (not all series). Use this whenever the user names one or more specific org/bureau codes.";
 
     public object InputSchema => new
     {
@@ -40,13 +40,12 @@ public class GenerateDocumentsByOrgsToolHandler : IMcpToolHandler
         if (orgCodes.Count == 0)
             return new { error = "Missing required parameter: orgCodes (array of bureau/org codes)" };
 
-        await _documentGenerationOrchestrator.GenerateByOrgCodesAsync(orgCodes);
-
-        var generated = await _documentGenerationOrchestrator.GetGenerationProgressAsync();
+        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateByOrgCodesAsync(orgCodes);
 
         return new
         {
-            generated
+            generated = succeeded,
+            failed
         };
     }
 }
