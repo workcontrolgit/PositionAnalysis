@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="PositionAnalysis.Mcp/PositionAnalysis.Mcp.csproj" />
+  <Project Path="PositionAnalysis.Mcp.Tests/PositionAnalysis.Mcp.Tests.csproj" />
+  <Project Path="PositionAnalysis.Cli/PositionAnalysis.Cli.csproj" />
+  <Project Path="PositionAnalysis.Cli.Tests/PositionAnalysis.Cli.Tests.csproj" />
+</Solution>
