@@ -60,6 +60,14 @@ public class Program
                     .AddJsonFile($"appsettings.{context.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true)
                         .AddUserSecrets<Program>(optional: true)
                     .AddEnvironmentVariables();
+
+                // Always write logs under the Mcp project's own logs/ folder, regardless of
+                // the process's working directory (the CLI launches this from bin/Debug/...).
+                var logFilePath = Path.Combine(ResolveProjectLogsDirectory(), "schedulepcmcp-.log");
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Serilog:WriteTo:1:Args:path"] = logFilePath
+                });
             })
             .ConfigureServices((context, services) =>
             {
@@ -161,4 +169,20 @@ public class Program
                     .Enrich.FromLogContext()
                     .Enrich.WithProperty("Application", "PositionAnalysis.Mcp");
             });
+
+    // Walks up from the running assembly's directory to find the Mcp project folder,
+    // so logs land in src/PositionAnalysis.Mcp/logs even when launched from bin/Debug/....
+    private static string ResolveProjectLogsDirectory()
+    {
+        var dir = AppContext.BaseDirectory;
+        for (var i = 0; i < 6 && !string.IsNullOrEmpty(dir); i++)
+        {
+            if (File.Exists(Path.Combine(dir, "PositionAnalysis.Mcp.csproj")))
+                return Path.Combine(dir, "logs");
+
+            dir = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        }
+
+        return Path.Combine(Directory.GetCurrentDirectory(), "logs");
+    }
 }
