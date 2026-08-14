@@ -27,6 +27,11 @@ MCP server startup is required either way.
 Configure the AI provider in `src/PositionAnalysis.Cli/appsettings.json` (`AI:Provider` =
 `AzureOpenAI`, `Ollama`, or `Claude`) before running interactively.
 
+> `AI:AzureOpenAI` (Cli, used here for chat parsing) and `AiProvider:AzureOpenAI`
+> (`PositionAnalysis.Mcp`, used for actual PD scoring) are separate config sections in
+> separate `appsettings.json` files — they are not synced automatically. If you rotate the
+> Azure OpenAI key/endpoint, update both.
+
 ## Interactive chat mode
 
 Running the CLI with no arguments starts a conversational loop. Type natural language; there

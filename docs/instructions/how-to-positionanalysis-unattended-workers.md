@@ -98,6 +98,11 @@ Variables set at the **Machine** level (visible to Task Scheduler running as SYS
 | `AiProvider__AzureOpenAI__Endpoint` | Azure OpenAI endpoint URL |
 | `AiProvider__AzureOpenAI__DeploymentName` | Model deployment name |
 
+> These `AiProvider__AzureOpenAI__*` variables only feed `PositionAnalysis.Mcp` (the scoring
+> process). The Cli's own `AI:AzureOpenAI` section (used for interactive chat parsing, not
+> relevant on worker-only servers) is a separate config and is not kept in sync automatically —
+> update both if the same Azure OpenAI credentials are used for both.
+
 > Changes take effect immediately for new processes. Running tasks must be restarted.
 
 ---
