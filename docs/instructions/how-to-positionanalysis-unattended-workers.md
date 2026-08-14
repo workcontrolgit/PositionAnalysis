@@ -56,10 +56,10 @@ dotnet publish src/PositionAnalysis.Cli/PositionAnalysis.Cli.csproj `
     -c Release `
     -r win-x64 `
     --self-contained `
-    -o C:\deploy\PositionAnalysis
+    -o D:\deploy\PositionAnalysis
 ```
 
-Copy the entire `C:\deploy\PositionAnalysis` folder to the same path on each Windows Server
+Copy the entire `D:\deploy\PositionAnalysis` folder to the same path on each Windows Server
 (the `PositionAnalysis.Mcp` build must sit in a `PositionAnalysis.Mcp` folder next to the Cli
 executable, or be resolvable via the source-tree fallback).
 
@@ -108,7 +108,7 @@ Open PowerShell **as Administrator** and run:
 
 ```powershell
 .\scripts\Register-ScheduledTask.ps1 `
-    -ExePath "C:\deploy\PositionAnalysis\PositionAnalysis.Cli.exe"
+    -ExePath "D:\deploy\PositionAnalysis\PositionAnalysis.Cli.exe"
 ```
 
 This creates a daily task under `\PositionAnalysis\PositionAnalysis-ProcessAll` that runs at
@@ -121,7 +121,7 @@ Optional overrides:
 
 ```powershell
 .\scripts\Register-ScheduledTask.ps1 `
-    -ExePath "C:\deploy\PositionAnalysis\PositionAnalysis.Cli.exe" `
+    -ExePath "D:\deploy\PositionAnalysis\PositionAnalysis.Cli.exe" `
     -RunAt "18:00" `
     -TaskName "PositionAnalysis-NightlyScore"
 ```
@@ -173,7 +173,7 @@ The Task Scheduler task is configured to **retry twice** (10-minute interval) on
 Serilog writes a rolling daily log to:
 
 ```
-C:\deploy\PositionAnalysis\logs\schedulepcmcp-.log
+D:\deploy\PositionAnalysis\logs\schedulepcmcp-.log
 ```
 
 Each scored PD logs a cost line:
@@ -189,5 +189,5 @@ Each scored PD logs a cost line:
 Token cost estimates are loaded from `llm-pricing.json` next to the exe. Edit it directly on the server to update prices — no redeployment needed:
 
 ```
-C:\deploy\PositionAnalysis\llm-pricing.json
+D:\deploy\PositionAnalysis\llm-pricing.json
 ```
