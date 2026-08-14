@@ -1,45 +1,172 @@
-# How to Run Schedule PC Scoring Workers
+# How to Run Schedule PC Scoring Workers (Unattended)
 
-Run the Schedule PC scoring queue unattended, on a schedule, across one or more machines.
+Run the Schedule PC scoring pipeline unattended on one or more Windows Servers using Task Scheduler.
 
-## What `--process-all` does
+---
 
-`SchedulePC.exe --process-all` starts the `SchedulePCMcp` child process, triggers the
-`process_all_pds` MCP tool, then polls `get_queue_status` until the queue is drained. It
-scores only — it does not stage PDs, generate documents, or export results.
+## Prerequisites
 
-Exit codes:
+- Windows Server with PowerShell 5.1+
+- .NET 10 runtime **or** use the self-contained publish (recommended — no runtime install needed)
+- Oracle DB access from the server
+- Azure OpenAI API key and endpoint
+
+---
+
+## Step 1 — Deploy the Oracle Schema Changes (one-time, per database)
+
+Run this against your shared Oracle schema **before** starting any workers.  
+It adds the worker-queue columns and index to `SCHEDULE_PC_EVAL`. The script is idempotent — safe to re-run.
+
+```sql
+-- From SQLcl, connected as the HR schema user:
+@src/PositionAnalysis.Mcp/Database/ADD_SCHEDULE_PC_WORK_QUEUE.sql
+```
+
+Columns added:
+
+| Column | Purpose |
+|--------|---------|
+| `WORKER_ID` | Identifies which server claimed a PD |
+| `CLAIMED_AT` | When the claim was taken |
+| `LEASE_EXPIRES_AT` | Claim expiry (15 min) — used to recover orphaned PDs if a server crashes |
+
+> **You only need to do this once**, even when adding a second server.
+
+---
+
+## Step 2 — Publish the Application
+
+Run this from the repo root on your build machine:
+
+```powershell
+dotnet publish src/PositionAnalysis.Cli/PositionAnalysis.Cli.csproj `
+    -c Release `
+    -r win-x64 `
+    --self-contained `
+    -o C:\deploy\PositionAnalysis
+```
+
+Copy the entire `C:\deploy\PositionAnalysis` folder to the same path on each Windows Server.
+
+> **Self-contained** means no .NET runtime installation is needed on the server.
+
+---
+
+## Step 3 — Set Environment Variables (run on each server, as Administrator)
+
+Secrets are supplied via system-level environment variables so they never live in config files.
+
+Open PowerShell **as Administrator** and run:
+
+```powershell
+.\scripts\Set-PositionAnalysisEnv.ps1 `
+    -OracleConnectionString "hr/YourPassword@//dbserver:1521/XEPDB1" `
+    -AzureOpenAiApiKey "your-azure-openai-key"
+```
+
+Optional overrides (defaults match `appsettings.json`):
+
+```powershell
+.\scripts\Set-PositionAnalysisEnv.ps1 `
+    -OracleConnectionString "hr/YourPassword@//dbserver:1521/XEPDB1" `
+    -AzureOpenAiApiKey "your-azure-openai-key" `
+    -AzureOpenAiEndpoint "https://your-endpoint.openai.azure.us/" `
+    -AzureOpenAiDeploymentName "gpt-4o"
+```
+
+Variables set at the **Machine** level (visible to Task Scheduler running as SYSTEM):
+
+| Variable | Setting |
+|----------|---------|
+| `Oracle__ConnectionString` | Oracle connection string |
+| `AiProvider__AzureOpenAI__ApiKey` | Azure OpenAI API key |
+| `AiProvider__AzureOpenAI__Endpoint` | Azure OpenAI endpoint URL |
+| `AiProvider__AzureOpenAI__DeploymentName` | Model deployment name |
+
+> Changes take effect immediately for new processes. Running tasks must be restarted.
+
+---
+
+## Step 4 — Register the Scheduled Task (run on each server, as Administrator)
+
+Open PowerShell **as Administrator** and run:
+
+```powershell
+.\scripts\Register-ScheduledTask.ps1 `
+    -ExePath "C:\deploy\PositionAnalysis\PositionAnalysis.Cli.exe"
+```
+
+This creates a daily task under `\PositionAnalysis\PositionAnalysis-ProcessAll` that runs at **5:00 PM** as SYSTEM.
+
+Optional overrides:
+
+```powershell
+.\scripts\Register-ScheduledTask.ps1 `
+    -ExePath "C:\deploy\PositionAnalysis\PositionAnalysis.Cli.exe" `
+    -RunAt "18:00" `
+    -TaskName "PositionAnalysis-NightlyScore"
+```
+
+To test immediately after registering:
+
+```powershell
+Start-ScheduledTask -TaskPath "\PositionAnalysis\" -TaskName "PositionAnalysis-ProcessAll"
+```
+
+To check last run status:
+
+```powershell
+Get-ScheduledTaskInfo -TaskPath "\PositionAnalysis\" -TaskName "PositionAnalysis-ProcessAll"
+```
+
+---
+
+## Running on Two Servers
+
+No additional setup is needed beyond repeating Steps 3–4 on the second server. Both servers point to the same Oracle database and compete for work via the claim queue.
+
+How it works:
+- Each worker claims one `PENDING` PD at a time using `FOR UPDATE SKIP LOCKED` — no PD is ever scored twice
+- Each claim has a **15-minute lease** — if a server crashes, the next run on any server automatically recovers orphaned PDs
+- Both servers score in parallel, draining the queue faster
+
+> Watch your Azure OpenAI **requests-per-minute quota** — two servers double the API call rate.
+
+---
+
+## Exit Codes
 
 | Code | Meaning |
 |------|---------|
-| `0` | Queue drained with no failed PDs |
-| `1` | Queue drained with one or more failed PDs, or the run itself failed |
-| `2` | Cancelled before normal terminal completion |
+| `0` | Queue drained, no failures |
+| `1` | Queue drained with one or more failed PDs, or run failed |
+| `2` | Cancelled before completion |
 
-## Deployment and Task Scheduler rules
+The Task Scheduler task is configured to **retry twice** (10-minute interval) on non-zero exit.
 
-- Deploy the same published `SchedulePC` and `SchedulePCMcp` build to every worker machine.
-- Run `src/SchedulePCMcp/Database/ADD_SCHEDULE_PC_WORK_QUEUE.sql` once against the shared
-  Oracle schema before enabling a second worker.
-- Configure each scheduled task to run `SchedulePC.exe --process-all` under an identity
-  with Oracle and Azure OpenAI access.
-- Set the task's Start In directory to the deployment root, and do not run staging,
-  document generation, or export on workers.
-- Start with one worker per machine. Add workers only after confirming Azure OpenAI
-  quota and reviewing Serilog logs.
-- Inspect `IN_PROGRESS` rows and `lease_expires_at` timestamps when a worker is
-  interrupted; the next run recovers only expired claims (default 15-minute lease).
+---
 
-## Scale-out
+## Logs
 
-Any number of workers can run concurrently against the same `schedule_pc_eval` queue.
-Each worker claims one `PENDING` row at a time with `FOR UPDATE SKIP LOCKED`, so rows
-are never scored twice by workers that are alive and holding a valid lease.
+Serilog writes a rolling daily log to:
 
-## Recovery
+```
+C:\deploy\PositionAnalysis\logs\schedulepcmcp-.log
+```
 
-If a worker crashes or is killed mid-claim, its claimed rows remain `IN_PROGRESS` with a
-`lease_expires_at` timestamp. Any worker's next `--process-all` run calls
-`RecoverExpiredClaimsAsync` first, resetting only rows whose lease has expired back to
-`PENDING` before claiming new work. No manual intervention is required unless the lease
-window itself needs to be shortened for faster recovery.
+Each scored PD logs a cost line:
+
+```
+[INF] PD 12345 LLM cost: 1,842 prompt + 312 completion = 2,154 tokens, ~$0.0054
+```
+
+---
+
+## Updating the LLM Pricing Table
+
+Token cost estimates are loaded from `llm-pricing.json` next to the exe. Edit it directly on the server to update prices — no redeployment needed:
+
+```
+C:\deploy\PositionAnalysis\llm-pricing.json
+```
