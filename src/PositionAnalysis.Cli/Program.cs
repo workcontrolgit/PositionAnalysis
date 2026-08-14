@@ -102,7 +102,7 @@ try
         ? null
         : () => ListOracleToolNamesAsync(oracleMcpClient);
 
-    var client = new PositionAnalysisChatClient(chatClient, mcpClient, oracleToolNamesProvider);
+    var client = new PositionAnalysisChatClient(chatClient, mcpClient, oracleToolNamesProvider, modelDisplay);
     await client.RunAsync();
 }
 catch (Exception ex)
@@ -218,15 +218,18 @@ class PositionAnalysisChatClient
     private readonly IChatClient _chatClient;
     private readonly StdioMcpClient _mcpClient;
     private readonly Func<Task<IReadOnlyList<string>>>? _oracleToolNamesProvider;
+    private readonly string _modelName;
 
     public PositionAnalysisChatClient(
         IChatClient chatClient,
         StdioMcpClient mcpClient,
-        Func<Task<IReadOnlyList<string>>>? oracleToolNamesProvider)
+        Func<Task<IReadOnlyList<string>>>? oracleToolNamesProvider,
+        string modelName)
     {
         _chatClient = chatClient;
         _mcpClient = mcpClient;
         _oracleToolNamesProvider = oracleToolNamesProvider;
+        _modelName = modelName;
     }
 
     public async Task RunAsync()
@@ -767,6 +770,7 @@ class PositionAnalysisChatClient
 
         var response = await _chatClient.GetResponseAsync(prompt);
         var text = response.Text;
+        LogTokenUsage(response.Usage);
 
         AnsiConsole.MarkupLine("[bold green]Assistant:[/]");
         if (string.IsNullOrWhiteSpace(text))
@@ -776,6 +780,44 @@ class PositionAnalysisChatClient
         }
 
         MarkdigSpectreRenderer.Render(text);
+    }
+
+    // Per-1,000-token USD pricing, longest-key-first so specific models match before their prefixes.
+    private static readonly (string Key, decimal InputPerK, decimal OutputPerK)[] TokenPricing =
+    [
+        ("gpt-5.1-codex-mini", 0.000250m, 0.002000m),
+        ("gpt-5.1",            0.001250m, 0.010000m),
+        ("gpt-4o-mini",        0.000150m, 0.000600m),
+        ("gpt-4o",             0.002500m, 0.010000m),
+        ("gpt-4-turbo",        0.010000m, 0.030000m),
+        ("gpt-4",              0.030000m, 0.060000m),
+        ("gpt-35-turbo",       0.000500m, 0.001500m),
+        ("gpt-3.5-turbo",      0.000500m, 0.001500m),
+    ];
+
+    private void LogTokenUsage(UsageDetails? usage)
+    {
+        if (usage is null)
+            return;
+
+        var promptTokens = usage.InputTokenCount ?? 0;
+        var completionTokens = usage.OutputTokenCount ?? 0;
+        var totalTokens = usage.TotalTokenCount ?? promptTokens + completionTokens;
+
+        var match = TokenPricing.FirstOrDefault(
+            p => _modelName.Contains(p.Key, StringComparison.OrdinalIgnoreCase));
+        var estimatedCost = match == default
+            ? (decimal?)null
+            : (promptTokens / 1000m) * match.InputPerK + (completionTokens / 1000m) * match.OutputPerK;
+
+        if (estimatedCost.HasValue)
+            Log.Information(
+                "Chat turn LLM cost: {PromptTokens:N0} prompt + {CompletionTokens:N0} completion = {TotalTokens:N0} tokens, ~${Cost:F4}",
+                promptTokens, completionTokens, totalTokens, estimatedCost.Value);
+        else
+            Log.Information(
+                "Chat turn token usage: {PromptTokens:N0} prompt + {CompletionTokens:N0} completion = {TotalTokens:N0} tokens (no pricing match for model {Model})",
+                promptTokens, completionTokens, totalTokens, _modelName);
     }
 
     private async Task<bool> TryHandleNaturalLanguageWorkflowAsync(string userInput)
