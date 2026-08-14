@@ -1,4 +1,4 @@
-# How To: Stage PDs, Clear PDs, and Show Staging Report
+# How To: Stage PDs, Clear PDs, and Show Staging Report (Position Analysis)
 
 This guide shows how to use the SchedulePC chat client to:
 
