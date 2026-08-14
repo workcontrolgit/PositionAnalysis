@@ -1,9 +1,11 @@
 ﻿using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using PositionAnalysis.Mcp.Application.Interfaces;
 using PositionAnalysis.Mcp.Domain.Entities;
 using PositionAnalysis.Mcp.Domain.ValueObjects;
 using PositionAnalysis.Mcp.Infrastructure.AiClients;
+using PositionAnalysis.Mcp.Infrastructure.Config;
 using PositionAnalysis.Mcp.Infrastructure.Repositories;
 
 namespace PositionAnalysis.Mcp.Application.Services;
@@ -17,6 +19,7 @@ public class ScoringOrchestrator : IScoringOrchestrator
     private readonly IAiClient _aiClient;
     private readonly IPositionAnalysisEvalRepository _evalRepository;
     private readonly IPositionDescriptionRepository _pdRepository;
+    private readonly RatingThresholdSettings _ratingThresholds;
     private readonly ILogger<ScoringOrchestrator> _logger;
 
     private const string SystemPrompt = @"You are an expert federal HR specialist evaluating position descriptions against Schedule Policy/Career (Schedule PC) criteria under Executive Order 13957.
@@ -27,11 +30,13 @@ Be objective and ground every finding in specific language from the duties text.
         IAiClient aiClient,
         IPositionAnalysisEvalRepository evalRepository,
         IPositionDescriptionRepository pdRepository,
+        IOptions<RatingThresholdSettings> ratingThresholds,
         ILogger<ScoringOrchestrator> logger)
     {
         _aiClient = aiClient ?? throw new ArgumentNullException(nameof(aiClient));
         _evalRepository = evalRepository ?? throw new ArgumentNullException(nameof(evalRepository));
         _pdRepository = pdRepository ?? throw new ArgumentNullException(nameof(pdRepository));
+        _ratingThresholds = ratingThresholds?.Value ?? new RatingThresholdSettings();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -304,6 +309,61 @@ Be objective and ground every finding in specific language from the duties text.
         _logger.LogInformation("RescoreFlagged completed for {Context}: {Scored} scored, {Failed} failed", context, totalScored, totalFailed);
     }
 
+    public async Task<int> RebucketRatingsAsync(IEnumerable<string>? series = null, IEnumerable<string>? pdNumbers = null)
+    {
+        var pdNbrList = pdNumbers?.Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).ToList() ?? new List<string>();
+        var seriesList = series?.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList() ?? new List<string>();
+
+        var candidates = new List<EvaluationResult>();
+        if (pdNbrList.Count > 0)
+        {
+            foreach (var pdNbr in pdNbrList)
+            {
+                var result = await _evalRepository.GetByPdAsync(pdNbr);
+                if (result is not null)
+                    candidates.Add(result);
+            }
+        }
+        else if (seriesList.Count > 0)
+        {
+            foreach (var seriesCode in seriesList)
+            {
+                try
+                {
+                    candidates.AddRange(await _evalRepository.GetBySeriesAsync(new OccupationalSeries(seriesCode)));
+                }
+                catch (ArgumentException ex)
+                {
+                    _logger.LogError(ex, "Invalid series code {SeriesCode}; skipping", seriesCode);
+                }
+            }
+        }
+        else
+        {
+            candidates.AddRange(await _evalRepository.GetAllAsync());
+        }
+
+        var changed = 0;
+        foreach (var result in candidates)
+        {
+            // Only already-scored PDs carry a triggered-criteria count; skip PENDING/FAILED rows.
+            if (result.CriteriaScores.Count == 0)
+                continue;
+
+            var triggeredCount = result.CriteriaScores.Count(c => c.Triggered);
+            var newRating = _ratingThresholds.RatingFor(triggeredCount);
+            if (string.Equals(newRating, result.Rating, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var newIsCandidate = newRating == "HIGH" || newRating == "MEDIUM";
+            await _evalRepository.UpdateRatingAsync(result.PdNbr, result.Series, newRating, newIsCandidate);
+            changed++;
+        }
+
+        _logger.LogInformation("RebucketRatings: {Changed} of {Total} PD(s) rebucketed to a new rating", changed, candidates.Count);
+        return changed;
+    }
+
     /// <summary>
     /// Scores all PENDING Position Descriptions across every staged series
     /// </summary>
@@ -563,12 +623,7 @@ positionPurpose must be descriptive, not evaluative, and should synthesize both 
             // Rating is derived from the triggered-criteria count, not the LLM's own rating field,
             // so the label displayed to reviewers can never contradict the criteria-met count.
             var triggeredCount = evaluationResult.CriteriaScores.Count(c => c.Triggered);
-            evaluationResult.Rating = triggeredCount switch
-            {
-                >= 3 => "HIGH",
-                1 or 2 => "MEDIUM",
-                _ => "LOW"
-            };
+            evaluationResult.Rating = _ratingThresholds.RatingFor(triggeredCount);
 
             if (aiReportedRating != null && !string.Equals(aiReportedRating, evaluationResult.Rating, StringComparison.OrdinalIgnoreCase))
             {

@@ -103,6 +103,7 @@ public class RescoreHumanSchedulePcPdsToolHandlerTests
         public Task RescoreFlaggedAsync() => throw new NotSupportedException();
         public Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
         public Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers) => throw new NotSupportedException();
+        public Task<int> RebucketRatingsAsync(IEnumerable<string>? series = null, IEnumerable<string>? pdNumbers = null) => throw new NotSupportedException();
         public Task<EvaluationResult?> GetResultAsync(string pdNbr) => throw new NotSupportedException();
     }
 }

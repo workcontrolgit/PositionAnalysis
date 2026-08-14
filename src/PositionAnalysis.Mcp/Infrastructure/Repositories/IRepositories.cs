@@ -38,6 +38,7 @@ public interface IPositionAnalysisEvalRepository
     Task<List<EvaluationResult>> GetNeedsRescoreByPdNumbersAsync(IEnumerable<string> pdNumbers);
     Task<int> GetCountByStatusAsync(EvaluationStatus status);
     Task<int> ResetFailedAsync();
+    Task UpdateRatingAsync(string pdNbr, OccupationalSeries series, string rating, bool isCandidate);
     Task<int> RecoverExpiredClaimsAsync() => throw new NotSupportedException();
     Task<EvaluationResult?> ClaimNextPendingAsync(string workerId, TimeSpan leaseDuration) => throw new NotSupportedException();
     Task<bool> CompleteClaimAsync(EvaluationResult result, string workerId) => throw new NotSupportedException();

@@ -105,6 +105,33 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
         _logger.LogInformation("Updated {RowCount} evaluation result rows", rows);
     }
 
+    public async Task UpdateRatingAsync(string pdNbr, OccupationalSeries series, string rating, bool isCandidate)
+    {
+        // Rebuckets the rating/candidacy columns only — result_json, scored_at, and status are
+        // left untouched since the underlying LLM criteria evidence has not changed.
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            UPDATE schedule_pc_eval
+            SET rating = :rating,
+                is_candidate = :isCandidate
+            WHERE pd_nbr = :pdNbr AND series = :series";
+
+        using var cmd = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout
+        };
+
+        cmd.Parameters.Add(":rating", rating);
+        cmd.Parameters.Add(":isCandidate", isCandidate ? "Y" : "N");
+        cmd.Parameters.Add(":pdNbr", pdNbr);
+        cmd.Parameters.Add(":series", series.ToString());
+
+        var rows = await cmd.ExecuteNonQueryAsync();
+        _logger.LogInformation("Rebucketed rating for PD {PdNbr} to {Rating} ({RowCount} row(s))", pdNbr, rating, rows);
+    }
+
     public async Task<int> DeleteAllAsync()
     {
         _logger.LogWarning("Deleting all records from schedule_pc_eval");

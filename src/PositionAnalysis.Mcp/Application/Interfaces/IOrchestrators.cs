@@ -72,6 +72,14 @@ public interface IScoringOrchestrator
     Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers);
 
     /// <summary>
+    /// Re-derives the rating (HIGH/MEDIUM/LOW) for already-scored PDs from their stored
+    /// triggered-criteria count using the current rating thresholds, without calling the LLM.
+    /// Optionally filtered by series or PD numbers; scores all completed PDs when both are empty.
+    /// </summary>
+    /// <returns>The number of PDs whose rating changed</returns>
+    Task<int> RebucketRatingsAsync(IEnumerable<string>? series = null, IEnumerable<string>? pdNumbers = null);
+
+    /// <summary>
     /// Retrieves the evaluation result for a specific PD
     /// </summary>
     /// <param name="pdNbr">The position description number</param>

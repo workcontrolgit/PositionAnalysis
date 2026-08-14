@@ -1,9 +1,11 @@
 ﻿using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using PositionAnalysis.Mcp.Application.Services;
 using PositionAnalysis.Mcp.Domain.Entities;
 using PositionAnalysis.Mcp.Domain.Enums;
 using PositionAnalysis.Mcp.Domain.ValueObjects;
 using PositionAnalysis.Mcp.Infrastructure.AiClients;
+using PositionAnalysis.Mcp.Infrastructure.Config;
 using PositionAnalysis.Mcp.Infrastructure.Repositories;
 using Xunit;
 
@@ -24,6 +26,7 @@ public class ScoringOrchestratorQueueTests
             new SuccessfulAiClient(),
             evaluationRepository,
             positionRepository,
+            Options.Create(new RatingThresholdSettings()),
             NullLogger<ScoringOrchestrator>.Instance);
 
         await orchestrator.ScoreAllAsync();
@@ -64,6 +67,7 @@ public class ScoringOrchestratorQueueTests
             new SuccessfulAiClient(),
             evaluationRepository,
             positionRepository,
+            Options.Create(new RatingThresholdSettings()),
             NullLogger<ScoringOrchestrator>.Instance);
 
         await orchestrator.ScoreAllAsync();
@@ -88,6 +92,7 @@ public class ScoringOrchestratorQueueTests
                 SuccessfulAiClient.Result),
             evaluationRepository,
             positionRepository,
+            Options.Create(new RatingThresholdSettings()),
             NullLogger<ScoringOrchestrator>.Instance);
 
         await orchestrator.ScoreAllAsync();
@@ -258,5 +263,6 @@ public class ScoringOrchestratorQueueTests
         public Task<List<EvaluationResult>> GetNeedsRescoreByPdNumbersAsync(IEnumerable<string> pdNumbers) => throw new NotSupportedException();
         public Task<int> GetCountByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
         public Task<int> ResetFailedAsync() => throw new NotSupportedException();
+        public Task UpdateRatingAsync(string pdNbr, OccupationalSeries series, string rating, bool isCandidate) => throw new NotSupportedException();
     }
 }

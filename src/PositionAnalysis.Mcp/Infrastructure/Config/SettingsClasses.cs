@@ -41,6 +41,26 @@ public class AzureOpenAiSettings
 }
 
 /// <summary>
+/// Thresholds mapping the count of triggered Schedule P/C criteria (0-4) to a rating bucket.
+/// Changing these values only affects future scoring and rebucket_ratings runs; it does not
+/// require rescoring already-evaluated PDs since the trigger flags are already stored.
+/// </summary>
+public class RatingThresholdSettings
+{
+    /// <summary>Minimum triggered-criteria count (out of 4) required for a HIGH rating.</summary>
+    public int HighMinCriteriaTriggered { get; set; } = 3;
+    /// <summary>Minimum triggered-criteria count (out of 4) required for a MEDIUM rating.</summary>
+    public int MediumMinCriteriaTriggered { get; set; } = 1;
+
+    public string RatingFor(int triggeredCount) => triggeredCount switch
+    {
+        var n when n >= HighMinCriteriaTriggered => "HIGH",
+        var n when n >= MediumMinCriteriaTriggered => "MEDIUM",
+        _ => "LOW"
+    };
+}
+
+/// <summary>
 /// Storage provider settings (FileSystem or Database)
 /// </summary>
 public class StorageSettings

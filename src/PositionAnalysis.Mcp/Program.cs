@@ -78,6 +78,7 @@ public class Program
                 services.Configure<DocumentGenerationSettings>(context.Configuration.GetSection("DocumentGeneration"));
                 services.Configure<ExcelExportSettings>(context.Configuration.GetSection("ExcelExport"));
                 services.Configure<McpSettings>(context.Configuration.GetSection("MCP"));
+                services.Configure<RatingThresholdSettings>(context.Configuration.GetSection("RatingThresholds"));
 
                 // Some services require the concrete settings object, not only IOptions<T>.
                 services.AddSingleton(sp =>
@@ -139,6 +140,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsByPdToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetNeedsRescoreCountToolHandler>();
+                services.AddScoped<IMcpToolHandler, RebucketRatingsToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreHumanSchedulePcPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ClearSchedulePcEvalToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
