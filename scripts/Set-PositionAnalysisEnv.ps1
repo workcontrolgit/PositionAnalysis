@@ -40,10 +40,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $vars = @{
-    "Oracle__ConnectionString"              = $OracleConnectionString
-    "AiProvider__AzureOpenAI__ApiKey"       = $AzureOpenAiApiKey
-    "AiProvider__AzureOpenAI__Endpoint"     = $AzureOpenAiEndpoint
-    "AiProvider__AzureOpenAI__DeploymentName" = $AzureOpenAiDeploymentName
+    "Oracle__ConnectionString"                 = $OracleConnectionString
+    # PositionAnalysis.Mcp reads AiProvider:*, PositionAnalysis.Cli reads AI:* -- both must be set.
+    "AiProvider__AzureOpenAI__ApiKey"          = $AzureOpenAiApiKey
+    "AiProvider__AzureOpenAI__Endpoint"        = $AzureOpenAiEndpoint
+    "AiProvider__AzureOpenAI__DeploymentName"  = $AzureOpenAiDeploymentName
+    "AI__AzureOpenAI__ApiKey"                  = $AzureOpenAiApiKey
+    "AI__AzureOpenAI__Endpoint"                = $AzureOpenAiEndpoint
+    "AI__AzureOpenAI__DeploymentName"          = $AzureOpenAiDeploymentName
 }
 
 Write-Host "Setting system environment variables..." -ForegroundColor Cyan

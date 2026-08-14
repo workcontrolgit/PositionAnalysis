@@ -34,8 +34,7 @@
         -TaskName "PositionAnalysis-NightlyScore"
 #>
 param(
-    [Parameter(Mandatory)]
-    [string] $ExePath,
+    [string] $ExePath    = "D:\deploy\PositionAnalysis\PositionAnalysis.Cli.exe",
 
     [string] $TaskName   = "PositionAnalysis-ProcessAll",
     [string] $TaskFolder = "\PositionAnalysis",
@@ -86,7 +85,7 @@ $fullTaskPath = "$TaskFolder\$TaskName"
 
 $existingTask = Get-ScheduledTask -TaskPath "$TaskFolder\" -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existingTask) {
-    Write-Host "  Task already exists — updating..." -ForegroundColor Yellow
+    Write-Host "  Task already exists - updating..." -ForegroundColor Yellow
     Set-ScheduledTask -TaskPath $TaskFolder -TaskName $TaskName `
         -Action $action -Trigger $trigger -Settings $settings -Principal $principal | Out-Null
 } else {
