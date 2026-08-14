@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PositionAnalysis.Mcp.Application.Interfaces;
 using PositionAnalysis.Mcp.Domain.Entities;
+using PositionAnalysis.Mcp.Domain.Enums;
 using PositionAnalysis.Mcp.Domain.ValueObjects;
 using PositionAnalysis.Mcp.Infrastructure.Config;
 using PositionAnalysis.Mcp.Infrastructure.DocumentGeneration;
@@ -38,7 +39,7 @@ public class ExportOrchestrator : IExportOrchestrator
 
     public async Task ExportAllAsync()
     {
-        var results = await _evalRepository.GetAllAsync();
+        var results = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);
         var fileName = $"PositionAnalysis-Eval-Tracker-{DateTime.Now:yyyy-MM-dd}.xlsx";
         await ExportAsync(results, fileName);
     }
@@ -67,7 +68,7 @@ public class ExportOrchestrator : IExportOrchestrator
             {
                 var occupationalSeries = new OccupationalSeries(seriesCode);
                 var seriesResults = await _evalRepository.GetBySeriesAsync(occupationalSeries);
-                results.AddRange(seriesResults);
+                results.AddRange(seriesResults.Where(IsCompletedResult));
             }
             catch (ArgumentException ex)
             {
@@ -111,6 +112,12 @@ public class ExportOrchestrator : IExportOrchestrator
                 continue;
             }
 
+            if (!IsCompletedResult(result))
+            {
+                _logger.LogWarning("Evaluation result for PD {PdNbr} is not complete (rating {Rating}); skipping", pdNbr, result.Rating);
+                continue;
+            }
+
             results.Add(result);
         }
 
@@ -135,10 +142,10 @@ public class ExportOrchestrator : IExportOrchestrator
             return;
         }
 
-        var allResults = await _evalRepository.GetAllAsync();
+        var completedResults = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);
         var results = new List<EvaluationResult>();
 
-        foreach (var result in allResults)
+        foreach (var result in completedResults)
         {
             var pd = await _positionDescriptionRepository.GetByPdNbrAsync(result.PdNbr);
             if (pd == null) continue;
@@ -157,8 +164,8 @@ public class ExportOrchestrator : IExportOrchestrator
 
     public async Task<(int Total, int Exported)> GetExportStatusAsync()
     {
-        var allResults = await _evalRepository.GetAllAsync();
-        var total = allResults.Count;
+        var completedResults = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);
+        var total = completedResults.Count;
 
         var directoryProbePath = _outputSettings.GetExcelOutputPath("_status_probe.xlsx");
         var exportDirectory = Path.GetDirectoryName(directoryProbePath);
@@ -344,6 +351,11 @@ public class ExportOrchestrator : IExportOrchestrator
     private static CriterionScore GetCriterion(EvaluationResult result, string name) =>
         result.CriteriaScores.FirstOrDefault(c => string.Equals(c.CriterionName, name, StringComparison.OrdinalIgnoreCase))
         ?? new CriterionScore { CriterionName = name };
+
+    private static bool IsCompletedResult(EvaluationResult result) =>
+        !string.Equals(result.Rating, "PENDING", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(result.Rating, "FAILED", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(result.Rating, "GENERATION_FAILED", StringComparison.OrdinalIgnoreCase);
 
     private static string ToFileNameSlug(string value)
     {
