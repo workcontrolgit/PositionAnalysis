@@ -1,42 +1,6 @@
 {
   "mcp": {
-    "inputs": [
-      {
-        "id": "hr-password",
-        "type": "promptString",
-        "description": "Oracle HR password",
-        "password": true
-      }
-    ],
-    "servers": {
-      "oracle-hr": {
-        "command": "docker",
-        "args": [
-          "run",
-          "-i",
-          "--rm",
-          "--network",
-          "oracle_default",
-          "-e",
-          "ORACLE_CONNECTION_STRING",
-          "-e",
-          "TARGET_SCHEMA",
-          "-e",
-          "CACHE_DIR",
-          "-e",
-          "THICK_MODE",
-          "-e",
-          "READ_ONLY_MODE",
-          "dmeppiel/oracle-mcp-server"
-        ],
-        "env": {
-          "ORACLE_CONNECTION_STRING": "hr/HrUser_2026@oracle:1521/XEPDB1",
-          "TARGET_SCHEMA": "HR",
-          "CACHE_DIR": ".cache/oracle-mcp",
-          "THICK_MODE": "",
-          "READ_ONLY_MODE": "1"
-        }
-      }
-    }
+    "inputs": [],
+    "servers": {}
   }
 }

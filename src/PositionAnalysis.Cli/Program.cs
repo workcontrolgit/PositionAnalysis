@@ -612,6 +612,21 @@ class PositionAnalysisChatClient
         return result.TryGetProperty("count", out var count) && count.TryGetInt32(out var n) ? n : 0;
     }
 
+    private async Task ShowNeedsRescoreCountAsync(IReadOnlyList<string> series, IReadOnlyList<string> pdNumbers)
+    {
+        var count = await GetNeedsRescoreCountAsync(
+            series.Count > 0 ? series : null,
+            pdNumbers.Count > 0 ? pdNumbers : null);
+
+        var scope = pdNumbers.Count > 0
+            ? $"among {string.Join(", ", pdNumbers)}"
+            : series.Count > 0
+                ? $"in series {string.Join(", ", series)}"
+                : "across all series";
+
+        AnsiConsole.MarkupLine($"[bold]{count}[/] PD(s) flagged needs_rescore = 'Y' {Markup.Escape(scope)}.");
+    }
+
     private static int SumStatusFields(JsonElement result, params string[] fields)
     {
         if (!result.TryGetProperty("series", out var seriesArray) || seriesArray.ValueKind != JsonValueKind.Array)
@@ -790,6 +805,14 @@ class PositionAnalysisChatClient
             return true;
         }
 
+        if (IsNeedsRescoreCountPrompt(normalized))
+        {
+            var pdNumbers = ExtractPdNumbers(userInput);
+            var series = ExtractSeriesCodes(userInput);
+            await ShowNeedsRescoreCountAsync(series, pdNumbers);
+            return true;
+        }
+
         if (IsGeneratePrompt(normalized))
         {
             var pdNumbers = ExtractPdNumbers(userInput);
@@ -929,6 +952,14 @@ class PositionAnalysisChatClient
         normalized.Contains("get_processing_status") ||
         normalized is "status" ||
         normalized.Contains("show status");
+
+    private static bool IsNeedsRescoreCountPrompt(string normalized) =>
+        normalized.Contains("get_needs_rescore_count") ||
+        normalized.Contains("needs_rescore_count") ||
+        normalized.Contains("needs rescore count") ||
+        normalized.Contains("how many need rescore") ||
+        normalized.Contains("how many pds need rescore") ||
+        normalized.Contains("needs rescore");
 
     private static bool IsStagePrompt(string normalized) =>
         normalized.StartsWith("stage") ||
