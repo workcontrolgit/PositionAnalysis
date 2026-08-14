@@ -61,21 +61,23 @@ public class ExportOrchestratorTests
 
             await orchestrator.ExportAllAsync();
 
-            var workbookPath = Path.Combine(reportsDirectory, "tracker-excel", "PositionAnalysis-Eval-Tracker-2026-08-10.xlsx");
+            // ExportAllAsync names the file from DateTime.Now, not the evaluation's EvaluatedDate.
+            var workbookPath = Path.Combine(reportsDirectory, "tracker-excel", $"PositionAnalysis-Eval-Tracker-{DateTime.Now:yyyy-MM-dd}.xlsx");
             Assert.True(File.Exists(workbookPath));
 
             using var workbook = new XLWorkbook(workbookPath);
             var worksheet = workbook.Worksheet("Evaluation Results");
             Assert.Equal("PD Number", worksheet.Cell(1, 1).GetString());
             Assert.Equal("Rating", worksheet.Cell(1, 12).GetString());
-            Assert.Equal("Word Form Filename", worksheet.Cell(1, 24).GetString());
+            Assert.Equal("Eval Date", worksheet.Cell(1, 24).GetString());
+            Assert.Equal("Word Form Filename", worksheet.Cell(1, 25).GetString());
             Assert.Equal("Policy Director", worksheet.Cell(2, 2).GetString());
             Assert.Equal("GS", worksheet.Cell(2, 4).GetString());
             Assert.Equal("14", worksheet.Cell(2, 6).GetString());
             Assert.Equal("Supervisor or Manager", worksheet.Cell(2, 7).GetString());
             Assert.Equal("HIGH", worksheet.Cell(2, 12).GetString());
             Assert.Equal(XLColor.FromHtml("#E2F0D9"), worksheet.Cell(2, 12).Style.Fill.BackgroundColor);
-            Assert.Equal("PD-PD-100_Policy-Director_GS-00130-14.docx", worksheet.Cell(2, 24).GetString());
+            Assert.Equal("PD-PD-100_Policy-Director_GS-00130-14.docx", worksheet.Cell(2, 25).GetString());
         }
         finally
         {
@@ -94,7 +96,8 @@ public class ExportOrchestratorTests
         public Task<List<SeriesCounts>> GetSeriesCountsAsync() => throw new NotSupportedException();
         public Task<EvaluationResult?> GetByPdAsync(string pdNbr) => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series) => throw new NotSupportedException();
-        public Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
+        public Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status) =>
+            Task.FromResult(status == EvaluationStatus.Complete ? new List<EvaluationResult> { result } : new List<EvaluationResult>());
         public Task<List<EvaluationResult>> GetNeedsRescoreAsync() => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetNeedsRescoreBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetNeedsRescoreByPdNumbersAsync(IEnumerable<string> pdNumbers) => throw new NotSupportedException();

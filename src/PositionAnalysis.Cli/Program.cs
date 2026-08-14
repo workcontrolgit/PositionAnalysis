@@ -22,6 +22,12 @@ var configuration = new ConfigurationBuilder()
         optional: true)
     .AddUserSecrets<Program>(optional: true)
     .AddEnvironmentVariables()
+    // Always write logs under the Cli project's own logs/ folder, regardless of the
+    // process's working directory (e.g. when "dotnet run" is invoked from the repo root).
+    .AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["Serilog:WriteTo:1:Args:path"] = Path.Combine(ResolveProjectLogsDirectory(), "schedulepc-.log")
+    })
     .Build();
 
 Log.Logger = new LoggerConfiguration()
@@ -173,6 +179,22 @@ static IChatClient BuildChatClient(IConfiguration config, string provider)
         endpoint: new Uri(claudeEndpoint),
         modelId: claudeDeployment,
         apiKey: claudeApiKey);
+}
+
+// Walks up from the running assembly's directory to find the Cli project folder,
+// so logs land in src/PositionAnalysis.Cli/logs even when launched from bin/Debug/... or a different cwd.
+static string ResolveProjectLogsDirectory()
+{
+    var dir = AppContext.BaseDirectory;
+    for (var i = 0; i < 6 && !string.IsNullOrEmpty(dir); i++)
+    {
+        if (File.Exists(Path.Combine(dir, "PositionAnalysis.Cli.csproj")))
+            return Path.Combine(dir, "logs");
+
+        dir = Path.GetDirectoryName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+    }
+
+    return Path.Combine(Directory.GetCurrentDirectory(), "logs");
 }
 
 static string GetModelDisplay(IConfiguration config, string provider) =>
