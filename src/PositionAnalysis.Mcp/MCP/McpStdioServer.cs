@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -16,11 +16,16 @@ public class McpStdioServer : BackgroundService
     };
 
     private readonly McpToolsProvider _toolsProvider;
+    private readonly StdioChannel _channel;
     private readonly ILogger<McpStdioServer> _logger;
 
-    public McpStdioServer(McpToolsProvider toolsProvider, ILogger<McpStdioServer> logger)
+    public McpStdioServer(
+        McpToolsProvider toolsProvider,
+        StdioChannel channel,
+        ILogger<McpStdioServer> logger)
     {
         _toolsProvider = toolsProvider;
+        _channel = channel;
         _logger = logger;
     }
 
@@ -62,7 +67,7 @@ public class McpStdioServer : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Invalid JSON request: {Request}", requestLine);
-            await WriteResponseAsync(CreateErrorResponse(null, -32700, "Parse error"), cancellationToken);
+            await _channel.WriteAsync(CreateErrorResponse(null, -32700, "Parse error"), cancellationToken);
             return;
         }
 
@@ -71,7 +76,7 @@ public class McpStdioServer : BackgroundService
 
         if (string.IsNullOrWhiteSpace(method))
         {
-            await WriteResponseAsync(CreateErrorResponse(idNode, -32600, "Invalid Request: missing method"), cancellationToken);
+            await _channel.WriteAsync(CreateErrorResponse(idNode, -32600, "Invalid Request: missing method"), cancellationToken);
             return;
         }
 
@@ -80,7 +85,7 @@ public class McpStdioServer : BackgroundService
             switch (method)
             {
                 case "initialize":
-                    await WriteResponseAsync(CreateSuccessResponse(idNode, new
+                    await _channel.WriteAsync(CreateSuccessResponse(idNode, new
                     {
                         protocolVersion = "2024-11-05",
                         capabilities = new { tools = new { } },
@@ -89,11 +94,11 @@ public class McpStdioServer : BackgroundService
                     break;
 
                 case "ping":
-                    await WriteResponseAsync(CreateSuccessResponse(idNode, new { }), cancellationToken);
+                    await _channel.WriteAsync(CreateSuccessResponse(idNode, new { }), cancellationToken);
                     break;
 
                 case "tools/list":
-                    await WriteResponseAsync(CreateSuccessResponse(idNode, new
+                    await _channel.WriteAsync(CreateSuccessResponse(idNode, new
                     {
                         tools = _toolsProvider.ListTools()
                     }), cancellationToken);
@@ -105,15 +110,25 @@ public class McpStdioServer : BackgroundService
                         var name = paramsNode?["name"]?.GetValue<string>();
                         if (string.IsNullOrWhiteSpace(name))
                         {
-                            await WriteResponseAsync(CreateErrorResponse(idNode, -32602, "Invalid params: name is required"), cancellationToken);
+                            await _channel.WriteAsync(CreateErrorResponse(idNode, -32602, "Invalid params: name is required"), cancellationToken);
                             break;
                         }
 
                         var argsNode = paramsNode?["arguments"];
                         var argsElement = JsonSerializer.SerializeToElement(argsNode ?? new JsonObject(), JsonOptions);
 
-                        var result = await _toolsProvider.CallToolAsync(name, argsElement, cancellationToken);
-                        await WriteResponseAsync(CreateSuccessResponse(idNode, new
+                        // MCP spec: the client embeds a progress token in params._meta.progressToken.
+                        // When present, we wire up a delegate that writes notifications/progress to
+                        // stdout via StdioChannel so it never interleaves with the final response.
+                        var progressToken = paramsNode?["_meta"]?["progressToken"]?.GetValue<string>();
+                        Func<double, double, Task>? reportProgressAsync = progressToken is not null
+                            ? (current, total) => _channel.WriteProgressAsync(progressToken, current, total, cancellationToken)
+                            : null;
+
+                        var result = await _toolsProvider.CallToolAsync(
+                            name, argsElement, progressToken, reportProgressAsync, cancellationToken);
+
+                        await _channel.WriteAsync(CreateSuccessResponse(idNode, new
                         {
                             content = new[]
                             {
@@ -128,45 +143,28 @@ public class McpStdioServer : BackgroundService
                     }
 
                 default:
-                    await WriteResponseAsync(CreateErrorResponse(idNode, -32601, $"Method not found: {method}"), cancellationToken);
+                    await _channel.WriteAsync(CreateErrorResponse(idNode, -32601, $"Method not found: {method}"), cancellationToken);
                     break;
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed processing method {Method}", method);
-            await WriteResponseAsync(CreateErrorResponse(idNode, -32000, ex.Message), cancellationToken);
+            await _channel.WriteAsync(CreateErrorResponse(idNode, -32000, ex.Message), cancellationToken);
         }
     }
 
-    private static object CreateSuccessResponse(JsonNode? idNode, object result)
+    private static object CreateSuccessResponse(JsonNode? idNode, object result) => new
     {
-        return new
-        {
-            jsonrpc = "2.0",
-            id = idNode?.Deserialize<object?>(),
-            result
-        };
-    }
+        jsonrpc = "2.0",
+        id = idNode?.Deserialize<object?>(),
+        result
+    };
 
-    private static object CreateErrorResponse(JsonNode? idNode, int code, string message)
+    private static object CreateErrorResponse(JsonNode? idNode, int code, string message) => new
     {
-        return new
-        {
-            jsonrpc = "2.0",
-            id = idNode?.Deserialize<object?>(),
-            error = new
-            {
-                code,
-                message
-            }
-        };
-    }
-
-    private static async Task WriteResponseAsync(object response, CancellationToken cancellationToken)
-    {
-        var json = JsonSerializer.Serialize(response, JsonOptions);
-        await Console.Out.WriteLineAsync(json.AsMemory(), cancellationToken);
-        await Console.Out.FlushAsync(cancellationToken);
-    }
+        jsonrpc = "2.0",
+        id = idNode?.Deserialize<object?>(),
+        error = new { code, message }
+    };
 }

@@ -130,6 +130,15 @@ public class Program
                 services.AddScoped<IExportOrchestrator, ExportOrchestrator>();
                 services.AddSingleton<ProcessAllRunStatusService>();
 
+                // MCP Infrastructure
+                // StdioChannel must be Singleton: it owns the SemaphoreSlim that
+                // serialises all stdout writes across the main response path and
+                // parallel progress notification threads.
+                services.AddSingleton<StdioChannel>();
+                // ParallelBatchScorer is Singleton: stateless, only holds IServiceScopeFactory
+                // and ILogger. All three process_batch_* tools share this one instance.
+                services.AddSingleton<ParallelBatchScorer>();
+
                 // MCP Tool Handlers
                 services.AddScoped<IMcpToolHandler, StagePdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, RetryFailedPdsToolHandler>();
@@ -146,6 +155,9 @@ public class Program
                 services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessPdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessAllPdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, ProcessBatchToolHandler>();
+                services.AddScoped<IMcpToolHandler, ProcessBatchBySeriesToolHandler>();
+                services.AddScoped<IMcpToolHandler, ProcessBatchByPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusByOrgsToolHandler>();

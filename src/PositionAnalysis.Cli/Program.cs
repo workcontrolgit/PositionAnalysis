@@ -572,6 +572,61 @@ class PositionAnalysisChatClient
             AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
     }
 
+    private async Task ProcessBatchAsync()
+    {
+        var queueStatus = await _mcpClient.CallToolAsync("get_queue_status", new { });
+        var pendingCount = queueStatus.TryGetProperty("pending", out var p) && p.TryGetInt32(out var n) ? n : 0;
+        if (!ConfirmLlmCost("all pending PD(s) (parallel batch)", pendingCount))
+            return;
+
+        await RunBatchWithProgressAsync("process_batch", new { });
+    }
+
+    private async Task ProcessBatchBySeriesAsync(IReadOnlyList<string> series)
+    {
+        var pendingCount = await GetSeriesStatusSumAsync(series, "staged");
+        if (!ConfirmLlmCost($"pending PD(s) in series {Markup.Escape(string.Join(", ", series))} (parallel batch)", pendingCount))
+            return;
+
+        await RunBatchWithProgressAsync("process_batch_by_series", new { series });
+    }
+
+    private async Task ProcessBatchByPdsAsync(IReadOnlyList<string> pdNumbers)
+    {
+        if (!ConfirmLlmCost($"[bold]{pdNumbers.Count}[/] PD(s) (parallel batch)", pdNumbers.Count))
+            return;
+
+        await RunBatchWithProgressAsync("process_batch_by_pds", new { pdNbrs = pdNumbers });
+    }
+
+    private async Task RunBatchWithProgressAsync(string toolName, object arguments)
+    {
+        AnsiConsole.MarkupLine("[grey]Running parallel batch with 10-way concurrency…[/]");
+
+        int lastPct = -1;
+        var result = await _mcpClient.CallToolWithProgressAsync(
+            toolName,
+            arguments,
+            onProgress: (current, total) =>
+            {
+                if (total <= 0) return;
+                var pct = (int)(current / total * 100);
+                if (pct == lastPct) return;
+                lastPct = pct;
+                Console.Error.Write($"\r  [{pct,3}%] {(int)current}/{(int)total} scored…   ");
+            });
+
+        Console.Error.WriteLine();
+
+        var completed = result.TryGetProperty("completed", out var c) && c.TryGetInt32(out var cn) ? cn : 0;
+        var failed    = result.TryGetProperty("failed",    out var f) && f.TryGetInt32(out var fn) ? fn : 0;
+        var message   = result.TryGetProperty("message",   out var m) ? m.GetString() ?? "" : "";
+
+        AnsiConsole.MarkupLine($"[green]Batch complete:[/] [bold]{completed}[/] scored, [bold]{failed}[/] failed.");
+        if (!string.IsNullOrWhiteSpace(message))
+            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(message)}[/]");
+    }
+
     private async Task ProcessAllAsync()
     {
         var queueStatus = await _mcpClient.CallToolAsync("get_queue_status", new { });
@@ -967,6 +1022,38 @@ class PositionAnalysisChatClient
             return true;
         }
 
+        if (IsProcessBatchBySeriesPrompt(normalized))
+        {
+            var series = ExtractSeriesCodes(userInput);
+            if (series.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]Include one or more series codes.[/] Example: [bold]batch series 00301 00560[/]");
+                return true;
+            }
+
+            await ProcessBatchBySeriesAsync(series);
+            return true;
+        }
+
+        if (IsProcessBatchByPdsPrompt(normalized))
+        {
+            var pdNumbers = ExtractPdNumbers(userInput);
+            if (pdNumbers.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]Include one or more PD numbers.[/] Example: [bold]batch pds 200028 200029[/]");
+                return true;
+            }
+
+            await ProcessBatchByPdsAsync(pdNumbers);
+            return true;
+        }
+
+        if (IsProcessBatchPrompt(normalized))
+        {
+            await ProcessBatchAsync();
+            return true;
+        }
+
         if (IsProcessAllPrompt(normalized))
         {
             await ProcessAllAsync();
@@ -1262,6 +1349,22 @@ class PositionAnalysisChatClient
         normalized.Contains("reset failed") ||
         normalized.Contains("requeue failed");
 
+    private static bool IsProcessBatchBySeriesPrompt(string normalized) =>
+        normalized.Contains("process_batch_by_series") ||
+        normalized.Contains("batch series") ||
+        (normalized.StartsWith("batch ") && normalized.Contains("series"));
+
+    private static bool IsProcessBatchByPdsPrompt(string normalized) =>
+        normalized.Contains("process_batch_by_pds") ||
+        normalized.Contains("batch pds") ||
+        (normalized.StartsWith("batch ") && normalized.Contains("pds"));
+
+    private static bool IsProcessBatchPrompt(string normalized) =>
+        normalized.Contains("process_batch") ||
+        normalized.StartsWith("batch") ||
+        normalized.Contains("batch score") ||
+        normalized.Contains("batch process");
+
     private static bool IsProcessAllPrompt(string normalized) =>
         normalized.Contains("process_all_pds") ||
         normalized.Contains("process all pds") ||
@@ -1320,6 +1423,9 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
     private readonly string _arguments;
     private readonly string? _workingDirectory;
     private readonly string _clientName;
+    // Degree-1 semaphore: JSON-RPC over stdio is strictly sequential (one
+    // request in flight at a time).  The lock also guards stdout writes so
+    // interleaved progress notifications from the server are read in-order.
     private readonly SemaphoreSlim _requestLock = new(1, 1);
     private Process? _process;
     private int _requestId;
@@ -1375,8 +1481,23 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
     }
 
     public async Task<JsonElement> CallToolAsync(string name, object arguments)
+        => await CallToolWithProgressAsync(name, arguments, onProgress: null);
+
+    /// <inheritdoc/>
+    public async Task<JsonElement> CallToolWithProgressAsync(
+        string name,
+        object arguments,
+        Action<double, double>? onProgress)
     {
-        var result = await SendRequestAsync("tools/call", new { name, arguments });
+        // When the caller wants progress notifications, generate a unique token
+        // and embed it in _meta.progressToken per the MCP spec.  The server
+        // reads this token and echoes it in every notifications/progress message
+        // so the client can correlate them with this specific request.
+        object @params = onProgress is not null
+            ? new { name, arguments, _meta = new { progressToken = Guid.NewGuid().ToString("N") } }
+            : new { name, arguments };
+
+        var result = await SendRequestAsync("tools/call", @params, onProgress);
 
         if (result.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
         {
@@ -1418,6 +1539,12 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
     }
 
     private async Task<JsonElement> SendRequestAsync(string method, object @params)
+        => await SendRequestAsync(method, @params, onProgress: null);
+
+    private async Task<JsonElement> SendRequestAsync(
+        string method,
+        object @params,
+        Action<double, double>? onProgress)
     {
         if (_process == null)
             throw new InvalidOperationException("MCP process is not started");
@@ -1459,7 +1586,28 @@ public sealed class StdioMcpClient : IAsyncDisposable, ISchedulePcMcpClient
                 using (doc)
                 {
                     var root = doc.RootElement;
-                    if (!root.TryGetProperty("id", out var idElement) || !idElement.TryGetInt32(out var responseId) || responseId != id)
+
+                    // ── Progress notifications ────────────────────────────────
+                    // JSON-RPC notifications have no "id" field.  The server
+                    // sends these interleaved with the final response while the
+                    // batch tool is running.  We dispatch them to the callback
+                    // and keep reading until the real response arrives.
+                    if (!root.TryGetProperty("id", out var idElement))
+                    {
+                        if (onProgress is not null &&
+                            root.TryGetProperty("method", out var methodEl) &&
+                            methodEl.GetString() == "notifications/progress" &&
+                            root.TryGetProperty("params", out var progressParams))
+                        {
+                            var current = progressParams.TryGetProperty("progress", out var p) ? p.GetDouble() : 0;
+                            var total   = progressParams.TryGetProperty("total",    out var t) ? t.GetDouble() : 0;
+                            onProgress(current, total);
+                        }
+                        continue; // not a response — keep reading
+                    }
+
+                    // ── Regular response ─────────────────────────────────────
+                    if (!idElement.TryGetInt32(out var responseId) || responseId != id)
                         continue;
 
                     if (root.TryGetProperty("error", out var error))

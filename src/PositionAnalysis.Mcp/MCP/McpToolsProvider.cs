@@ -65,16 +65,33 @@ public class McpToolsProvider
             .ToList();
     }
 
-    public async Task<object> CallToolAsync(string name, JsonElement arguments, CancellationToken cancellationToken)
+    /// <param name="name">Tool name.</param>
+    /// <param name="arguments">Tool arguments JSON.</param>
+    /// <param name="progressToken">
+    ///   Value from the client's <c>_meta.progressToken</c>; null when absent.
+    /// </param>
+    /// <param name="reportProgressAsync">
+    ///   Delegate that writes a <c>notifications/progress</c> message to stdout.
+    ///   Null when <paramref name="progressToken"/> is null.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    public async Task<object> CallToolAsync(
+        string name,
+        JsonElement arguments,
+        string? progressToken,
+        Func<double, double, Task>? reportProgressAsync,
+        CancellationToken cancellationToken)
     {
         using var scope = _scopeFactory.CreateScope();
         var handlers = scope.ServiceProvider.GetServices<IMcpToolHandler>();
         var handler = handlers.FirstOrDefault(h => string.Equals(h.Name, name, StringComparison.OrdinalIgnoreCase));
 
         if (handler == null)
-        {
             throw new InvalidOperationException($"Unknown MCP tool: {name}");
-        }
+
+        // Tools that opt into streaming get the progress delegate; all others use the plain path.
+        if (handler is IMcpStreamingToolHandler streamingHandler)
+            return await streamingHandler.InvokeStreamingAsync(arguments, progressToken, reportProgressAsync, cancellationToken);
 
         return await handler.InvokeAsync(arguments, cancellationToken);
     }

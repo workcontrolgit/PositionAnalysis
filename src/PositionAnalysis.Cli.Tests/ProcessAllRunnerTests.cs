@@ -150,6 +150,10 @@ public class ProcessAllRunnerTests
             };
         }
 
+        // ProcessAllRunner never calls this overload; implemented only to satisfy the interface.
+        public Task<JsonElement> CallToolWithProgressAsync(string name, object arguments, Action<double, double> onProgress)
+            => CallToolAsync(name, arguments);
+
         private static JsonElement EmptyResponse()
         {
             using var document = JsonDocument.Parse("{}");

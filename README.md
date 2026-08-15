@@ -87,6 +87,38 @@ Each project has its own `appsettings.json` since they run as separate processes
 > automatically. If you rotate the Azure OpenAI API key or endpoint, update both files (or both
 > sets of environment variables) or the two processes will drift out of sync.
 
+### Setting secrets (development)
+
+Use `dotnet user-secrets` — run these once per project, not per-machine:
+
+**PositionAnalysis.Mcp** (Oracle + scoring LLM):
+
+```powershell
+cd src/PositionAnalysis.Mcp
+
+# Oracle — ODP.NET format (NOT SQLcl/SQL*Plus "user/pass@//host" syntax)
+dotnet user-secrets set "Oracle:ConnectionString" "User Id=<user>;Password=<pass>;Data Source=//<host>:<port>/<service>"
+
+# Azure OpenAI scoring LLM
+dotnet user-secrets set "AiProvider:AzureOpenAI:Endpoint"       "https://<resource>.cognitiveservices.azure.com/"
+dotnet user-secrets set "AiProvider:AzureOpenAI:DeploymentName" "<deployment>"
+dotnet user-secrets set "AiProvider:AzureOpenAI:ApiKey"         "<key>"
+```
+
+**PositionAnalysis.Cli** (interactive-chat LLM):
+
+```powershell
+cd src/PositionAnalysis.Cli
+
+dotnet user-secrets set "AI:AzureOpenAI:Endpoint"       "https://<resource>.cognitiveservices.azure.com/"
+dotnet user-secrets set "AI:AzureOpenAI:DeploymentName" "<deployment>"
+dotnet user-secrets set "AI:AzureOpenAI:ApiKey"         "<key>"
+```
+
+> **Oracle connection string format:** `Oracle.ManagedDataAccess.Core` (ODP.NET) requires the
+> key-value format above. The SQLcl/SQL*Plus shorthand `user/pass@//host:port/service` is **not**
+> accepted and will throw `ORA-50007: Connection string is not well-formed`.
+
 Secrets should be supplied via user secrets (dev) or machine-level environment variables
 (server), never committed to `appsettings.json` — see the unattended-workers doc for the
 `Set-PositionAnalysisEnv.ps1` script used on servers.
