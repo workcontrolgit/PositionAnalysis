@@ -37,21 +37,21 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    var processAllMode = args.Length == 1 && args[0].Equals("--process-all", StringComparison.OrdinalIgnoreCase);
+    var unattendedMode = args.Length == 1 && args[0].Equals("--unattended", StringComparison.OrdinalIgnoreCase);
     var schedulePcMcpLaunchCommand = SchedulePcMcpLaunchResolver.Resolve(AppContext.BaseDirectory);
 
     await using var mcpClient = new StdioMcpClient(schedulePcMcpLaunchCommand);
     await mcpClient.StartAsync();
 
-    using var processAllCancellation = new CancellationTokenSource();
+    using var unattendedCancellation = new CancellationTokenSource();
     AppDomain.CurrentDomain.ProcessExit += (_, _) => mcpClient.KillProcess();
 
     Console.CancelKeyPress += (_, eventArgs) =>
     {
         eventArgs.Cancel = true;
-        if (processAllMode)
+        if (unattendedMode)
         {
-            processAllCancellation.Cancel();
+            unattendedCancellation.Cancel();
             return;
         }
 
@@ -59,13 +59,13 @@ try
         Environment.Exit(0);
     };
 
-    if (processAllMode)
+    if (unattendedMode)
     {
         Environment.ExitCode = await new ProcessAllRunner(
             mcpClient,
             TimeSpan.FromSeconds(30),
             (Func<TimeSpan, CancellationToken, Task>)Task.Delay,
-            Log.Logger).RunAsync(processAllCancellation.Token);
+            Log.Logger).RunAsync(unattendedCancellation.Token);
         return;
     }
 
@@ -308,12 +308,6 @@ class PositionAnalysisChatClient
     {
         var status = await _mcpClient.CallToolAsync("get_processing_status_by_series", new { series });
         RenderSeriesReport($"Processing Status: series {string.Join(", ", series)}", status);
-    }
-
-    private async Task ShowStatusByOrgsAsync(IReadOnlyList<string> orgCodes)
-    {
-        var status = await _mcpClient.CallToolAsync("get_processing_status_by_orgs", new { orgCodes });
-        RenderSeriesReport($"Processing Status: org(s) {string.Join(", ", orgCodes)}", status);
     }
 
     private async Task ShowStatusByPdAsync(IReadOnlyList<string> pdNumbers)
@@ -910,14 +904,11 @@ class PositionAnalysisChatClient
         {
             var pdNumbers = ExtractPdNumbers(userInput);
             var series = ExtractSeriesCodes(userInput);
-            var orgCodes = ExtractOrgCodes(userInput);
 
             if (pdNumbers.Count > 0)
                 await ShowStatusByPdAsync(pdNumbers);
             else if (series.Count > 0)
                 await ShowStatusBySeriesAsync(series);
-            else if (orgCodes.Count > 0)
-                await ShowStatusByOrgsAsync(orgCodes);
             else
                 await ShowStatusAsync();
 
