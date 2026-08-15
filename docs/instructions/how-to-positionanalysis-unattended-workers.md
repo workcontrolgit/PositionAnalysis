@@ -13,7 +13,7 @@ For interactive/console chat mode instead, see
 ## What `--unattended` does
 
 `PositionAnalysis.Cli.exe --unattended` starts the `PositionAnalysis.Mcp` child process,
-triggers the `process_all_pds` MCP tool, then polls `get_queue_status` until the queue is
+triggers the `run_unattended_scoring` MCP tool, then polls `get_queue_status` until the queue is
 drained. It scores only — it does not stage PDs, generate documents, or export results.
 
 ## Prerequisites

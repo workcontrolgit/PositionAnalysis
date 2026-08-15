@@ -14,7 +14,7 @@ public class RetryFailedPdsToolHandler : IMcpToolHandler
 
     public string Name => "retry_failed_pds";
 
-    public string Description => "Reset all FAILED evaluation rows back to PENDING so they will be re-scored on the next process_pds_by_series call";
+    public string Description => "Reset all FAILED evaluation rows back to PENDING so they will be re-scored on the next process_batch_by_series or run_unattended_scoring call";
 
     public object InputSchema => new
     {
@@ -29,7 +29,7 @@ public class RetryFailedPdsToolHandler : IMcpToolHandler
         {
             resetCount,
             status = resetCount > 0
-                ? $"Reset {resetCount} failed PD(s) to PENDING. Run process_pds_by_series to re-score."
+                ? $"Reset {resetCount} failed PD(s) to PENDING. Run process_batch_by_series or run_unattended_scoring to re-score."
                 : "No failed PDs found to reset."
         };
     }

@@ -16,7 +16,6 @@ public interface IStagingOrchestrator
 /// </summary>
 public interface IReportingService
 {
-    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync();
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportAsync();
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportBySeriesAsync(IEnumerable<string> series);
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportByOrgCodesAsync(IEnumerable<string> orgCodes);
@@ -34,12 +33,6 @@ public interface IScoringOrchestrator
     /// </summary>
     /// <param name="pdNbr">The position description number</param>
     Task ScoreAsync(string pdNbr);
-
-    /// <summary>
-    /// Scores all Position Descriptions for specified occupational series
-    /// </summary>
-    /// <param name="series">Enumerable of occupational series codes (5-digit strings)</param>
-    Task ScoreBySeriesAsync(IEnumerable<string> series);
 
     /// <summary>
     /// Scores all PENDING Position Descriptions across every staged series

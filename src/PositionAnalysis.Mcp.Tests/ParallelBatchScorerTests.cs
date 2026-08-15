@@ -222,7 +222,6 @@ public class ParallelBatchScorerTests
             return Task.CompletedTask;
         }
 
-        public Task ScoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task ScoreAllAsync() => Task.CompletedTask;
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task RescoreAllAsync() => Task.CompletedTask;

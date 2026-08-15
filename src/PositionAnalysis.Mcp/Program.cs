@@ -152,9 +152,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, RebucketRatingsToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreHumanSchedulePcPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ClearSchedulePcEvalToolHandler>();
-                services.AddScoped<IMcpToolHandler, GetStagingReportToolHandler>();
-                services.AddScoped<IMcpToolHandler, ProcessPdsBySeriesToolHandler>();
-                services.AddScoped<IMcpToolHandler, ProcessAllPdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, RunUnattendedScoringToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessBatchToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessBatchBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessBatchByPdsToolHandler>();

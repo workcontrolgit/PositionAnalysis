@@ -293,9 +293,6 @@ class PositionAnalysisChatClient
         var stagedCount = result.TryGetProperty("stagedCount", out var sc) && sc.TryGetInt32(out var n) ? n : 0;
 
         AnsiConsole.MarkupLine($"[green]Staging complete.[/] Staged: [bold]{stagedCount}[/] position descriptions.");
-
-        var report = await _mcpClient.CallToolAsync("get_staging_report", new { });
-        RenderStagingSummaryReport("Staging Report", report);
     }
 
     private async Task ShowStatusAsync()
@@ -314,27 +311,6 @@ class PositionAnalysisChatClient
     {
         var status = await _mcpClient.CallToolAsync("get_processing_status_by_pd", new { pdNumbers });
         RenderPdStatusReport($"Processing Status: PD {string.Join(", ", pdNumbers)}", status);
-    }
-
-    private async Task ProcessAsync(string seriesInput)
-    {
-        var series = ParseSeriesList(seriesInput);
-        if (series.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]Provide one or more series.[/] Example: [bold]process 0301,0560[/]");
-            return;
-        }
-
-        var pendingCount = await GetSeriesStatusSumAsync(series, "staged");
-        if (!ConfirmLlmCost($"unscored PD(s) in series {Markup.Escape(string.Join(", ", series))}", pendingCount))
-            return;
-
-        var result = await _mcpClient.CallToolAsync("process_pds_by_series", new
-        {
-            series
-        });
-
-        AnsiConsole.MarkupLine($"[green]{Markup.Escape(result.GetProperty("status").GetString() ?? "processing_started")}[/]");
     }
 
     private async Task ProcessPdAsync(string pdNbr)
@@ -628,7 +604,7 @@ class PositionAnalysisChatClient
         if (!ConfirmLlmCost("unscored PD(s) across all staged series", pendingCount))
             return;
 
-        var result = await _mcpClient.CallToolAsync("process_all_pds", new { });
+        var result = await _mcpClient.CallToolAsync("run_unattended_scoring", new { });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "processing_started" : "processing_started";
         AnsiConsole.MarkupLine($"[green]{Markup.Escape(status)}[/] — scoring all staged PDs across all series.");
     }
@@ -893,13 +869,6 @@ class PositionAnalysisChatClient
             return true;
         }
 
-        if (IsStagingReportPrompt(normalized))
-        {
-            var report = await _mcpClient.CallToolAsync("get_staging_report", new { });
-            RenderStagingSummaryReport("Staging Report", report);
-            return true;
-        }
-
         if (IsProcessingStatusPrompt(normalized))
         {
             var pdNumbers = ExtractPdNumbers(userInput);
@@ -1067,7 +1036,7 @@ class PositionAnalysisChatClient
                 return true;
             }
 
-            await ProcessAsync(string.Join(",", series));
+            await ProcessBatchBySeriesAsync(series);
             return true;
         }
 
@@ -1081,12 +1050,6 @@ class PositionAnalysisChatClient
         return false;
     }
 
-    private static bool IsStagingReportPrompt(string normalized) =>
-        normalized.Contains("staging report") ||
-        normalized.Contains("stage report") ||
-        normalized.Contains("get_staging_report") ||
-        normalized.Contains("show staged report") ||
-        normalized.Contains("staged report");
 
     private static bool IsProcessingStatusPrompt(string normalized) =>
         normalized.Contains("processing status") ||
@@ -1292,41 +1255,6 @@ class PositionAnalysisChatClient
         AnsiConsole.WriteLine();
     }
 
-    private static void RenderStagingSummaryReport(string title, JsonElement report)
-    {
-        AnsiConsole.Write(new Rule($"[bold teal]{Markup.Escape(title)}[/]").RuleStyle("teal").LeftJustified());
-        AnsiConsole.WriteLine();
-
-        var table = new Spectre.Console.Table()
-            .BorderColor(Color.Teal)
-            .AddColumn(new TableColumn("[bold cyan]SERIES[/]").Centered())
-            .AddColumn(new TableColumn("[bold cyan]STAGED[/]").Centered())
-            .AddColumn(new TableColumn("[bold cyan]IN_PROGRESS[/]").Centered())
-            .AddColumn(new TableColumn("[bold cyan]COMPLETE[/]").Centered())
-            .AddColumn(new TableColumn("[bold cyan]FAILED[/]").Centered());
-
-        if (report.TryGetProperty("series", out var seriesArray) && seriesArray.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in seriesArray.EnumerateArray())
-            {
-                var series = item.TryGetProperty("series", out var s) ? s.GetString() ?? string.Empty : string.Empty;
-                var staged = item.TryGetProperty("staged", out var st) && st.TryGetInt32(out var stagedValue) ? stagedValue : 0;
-                var inProgress = item.TryGetProperty("inProgress", out var ip) && ip.TryGetInt32(out var inProgressValue) ? inProgressValue : 0;
-                var complete = item.TryGetProperty("complete", out var c) && c.TryGetInt32(out var completeValue) ? completeValue : 0;
-                var failed = item.TryGetProperty("failed", out var f) && f.TryGetInt32(out var failedValue) ? failedValue : 0;
-
-                table.AddRow(
-                    Markup.Escape(series),
-                    staged.ToString(),
-                    inProgress.ToString(),
-                    complete.ToString(),
-                    failed.ToString());
-            }
-        }
-
-        AnsiConsole.Write(table);
-        AnsiConsole.WriteLine();
-    }
 
     private static bool IsIdentityPrompt(string input)
     {
@@ -1357,7 +1285,7 @@ class PositionAnalysisChatClient
         normalized.Contains("batch process");
 
     private static bool IsProcessAllPrompt(string normalized) =>
-        normalized.Contains("process_all_pds") ||
+        normalized.Contains("run_unattended_scoring") ||
         normalized.Contains("process all pds") ||
         normalized.Contains("process all") ||
         normalized.Contains("score all");
@@ -1682,7 +1610,7 @@ public sealed class ProcessAllRunner
         {
             _logger.Information("Starting unattended Schedule PC scoring run");
             cancellationToken.ThrowIfCancellationRequested();
-            await _mcpClient.CallToolAsync("process_all_pds", new { });
+            await _mcpClient.CallToolAsync("run_unattended_scoring", new { });
 
             while (true)
             {

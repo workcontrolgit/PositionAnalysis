@@ -37,7 +37,7 @@ public sealed class ProcessAllRunner
         {
             _logger.Information("Starting unattended Schedule PC scoring run");
             cancellationToken.ThrowIfCancellationRequested();
-            await _mcpClient.CallToolAsync("process_all_pds", new { });
+            await _mcpClient.CallToolAsync("run_unattended_scoring", new { });
 
             while (true)
             {

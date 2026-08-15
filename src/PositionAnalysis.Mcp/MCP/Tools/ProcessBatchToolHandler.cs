@@ -11,7 +11,7 @@ namespace PositionAnalysis.Mcp.MCP.Tools;
 ///
 /// Fetches every row with Rating = 'PENDING' from SCHEDULE_PC_EVAL,
 /// then runs the 10-way parallel scoring loop with live progress notifications.
-/// Unlike process_all_pds (fire-and-forget), this tool is synchronous:
+/// Unlike run_unattended_scoring (fire-and-forget), this tool is synchronous:
 /// the response arrives only after all PDs have been scored.
 /// </summary>
 public sealed class ProcessBatchToolHandler : IMcpStreamingToolHandler

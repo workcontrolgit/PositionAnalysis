@@ -96,7 +96,6 @@ public class RescoreHumanSchedulePcPdsToolHandlerTests
             return Task.CompletedTask;
         }
 
-        public Task ScoreBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
         public Task ScoreAllAsync() => throw new NotSupportedException();
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
         public Task RescoreAllAsync() => throw new NotSupportedException();
