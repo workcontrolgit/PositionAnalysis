@@ -119,6 +119,26 @@ dotnet user-secrets set "AI:AzureOpenAI:ApiKey"         "<key>"
 > key-value format above. The SQLcl/SQL*Plus shorthand `user/pass@//host:port/service` is **not**
 > accepted and will throw `ORA-50007: Connection string is not well-formed`.
 
+### Temperature (`AiProvider:AzureOpenAI:Temperature`)
+
+Temperature controls how deterministic the LLM's scoring responses are.
+
+**For PD evaluation, set temperature to `0` or `0.2`.** Lower values produce more consistent,
+reproducible ratings — critical for fair and auditable Schedule P/C scoring. Higher values
+introduce randomness that can cause the same PD to receive different ratings across runs.
+
+`appsettings.json` defaults to `0.2`. If your Azure OpenAI deployment only accepts the model
+default (`1.0`) — which some newer models enforce — override it via user secret:
+
+```powershell
+# Override to model default (use when the model rejects non-default temperature)
+dotnet user-secrets set "AiProvider:AzureOpenAI:Temperature" "1"
+```
+
+When the temperature is set to `1.0`, the application omits the parameter from the API request
+entirely (sending it explicitly would still trigger a `BadRequest` on restricted models).
+For all other values the parameter is sent as configured.
+
 Secrets should be supplied via user secrets (dev) or machine-level environment variables
 (server), never committed to `appsettings.json` — see the unattended-workers doc for the
 `Set-PositionAnalysisEnv.ps1` script used on servers.
