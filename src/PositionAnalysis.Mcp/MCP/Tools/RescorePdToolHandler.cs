@@ -51,7 +51,7 @@ public class RescorePdToolHandler : IMcpToolHandler
         return new
         {
             pdNbr,
-            status = $"Rescore complete for PD {pdNbr}. Run generate_documents to regenerate the Word form."
+            status = $"Rescore complete for PD {pdNbr}. Run generate_documents_all to regenerate the Word form."
         };
     }
 }

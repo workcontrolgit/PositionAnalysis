@@ -10,7 +10,7 @@ public class ProcessAllRunStatusServiceTests
     [Fact]
     public async Task ProcessAllHandler_InstructsCallersToPollQueueStatus()
     {
-        var handler = new ProcessAllPdsToolHandler(new NoOpScoringOrchestrator(), new ProcessAllRunStatusService());
+        var handler = new RunUnattendedScoringToolHandler(new NoOpScoringOrchestrator(), new ProcessAllRunStatusService());
         using var arguments = JsonDocument.Parse("{}");
 
         var response = await handler.InvokeAsync(arguments.RootElement, CancellationToken.None);
@@ -35,10 +35,8 @@ public class ProcessAllRunStatusServiceTests
     private sealed class NoOpScoringOrchestrator : Application.Interfaces.IScoringOrchestrator
     {
         public Task ScoreAsync(string pdNbr) => Task.CompletedTask;
-        public Task ScoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task ScoreAllAsync() => Task.CompletedTask;
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
-        public Task RescoreAllAsync() => Task.CompletedTask;
         public Task RescoreFlaggedAsync() => Task.CompletedTask;
         public Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers) => Task.CompletedTask;

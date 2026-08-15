@@ -153,35 +153,83 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
 
     public async Task<StagingResult> StageFromMaxPdAsync(StagingFilter filter)
     {
-        _logger.LogInformation("Calling Oracle TEMP source bulk staging procedure with filter: {Filter}", filter);
+        _logger.LogInformation("Staging from Oracle TEMP source with filter: {Filter}", filter);
 
         using var connection = new OracleConnection(_settings.ConnectionString);
         await connection.OpenAsync();
 
-        using var cmd = new OracleCommand("stage_schedule_pc_eval", connection)
+        var seriesValue = filter.Series?.ToString();
+        var orgCodeValue = filter.OrganizationCode;
+
+        const string eligibilityPredicate = @"
+            WHERE CASE
+                      WHEN REGEXP_LIKE(TRIM(pd.grd_code), '^[[:digit:]]+$')
+                      THEN TO_NUMBER(TRIM(pd.grd_code))
+                  END BETWEEN 13 AND 15
+              AND (:series IS NULL OR pd.gvt_occ_series = :series)
+              AND (:orgCode IS NULL OR pd.pd_origin_org_code = :orgCode)";
+
+        const string dutyExistsPredicate = @"
+            EXISTS (SELECT 1 FROM temp_pd_sched_pc_duties duty
+                WHERE duty.pd_seq_num = pd.pd_seq_num
+                    AND duty.pdd_major_duties_text IS NOT NULL
+            )";
+
+        int excludedWithoutDutiesCount;
+        using (var countCmd = new OracleCommand(
+            $"SELECT COUNT(*) FROM temp_pd_sched_pc pd {eligibilityPredicate} AND NOT {dutyExistsPredicate}",
+            connection)
         {
-            CommandType = System.Data.CommandType.StoredProcedure,
             CommandTimeout = _settings.CommandTimeout,
             BindByName = true
-        };
+        })
+        {
+            countCmd.Parameters.Add("series", OracleDbType.Varchar2, seriesValue, System.Data.ParameterDirection.Input);
+            countCmd.Parameters.Add("orgCode", OracleDbType.Varchar2, orgCodeValue, System.Data.ParameterDirection.Input);
 
-        cmd.Parameters.Add("p_series", OracleDbType.Varchar2, filter.Series?.ToString(), System.Data.ParameterDirection.Input);
-        cmd.Parameters.Add("p_org_code", OracleDbType.Varchar2, filter.OrganizationCode, System.Data.ParameterDirection.Input);
-        var stagedCountParameter = cmd.Parameters.Add("p_staged_count", OracleDbType.Int32);
-        stagedCountParameter.Direction = System.Data.ParameterDirection.Output;
-        var excludedCountParameter = cmd.Parameters.Add("p_excluded_count", OracleDbType.Int32);
-        excludedCountParameter.Direction = System.Data.ParameterDirection.Output;
+            excludedWithoutDutiesCount = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
+        }
 
-        await cmd.ExecuteNonQueryAsync();
+        int stagedCount;
+        using (var insertCmd = new OracleCommand(
+            $@"
+            INSERT INTO schedule_pc_eval (
+                pd_seq_num, pd_nbr, series, grade, status, rating,
+                is_candidate, justification_summary, scored_at, result_json, error_msg
+            )
+            SELECT
+                pd.pd_seq_num,
+                pd.pd_nbr,
+                pd.gvt_occ_series,
+                LPAD(TRIM(pd.grd_code), 2, '0'),
+                'pending',
+                'PENDING',
+                'N',
+                'Staged for evaluation',
+                SYSTIMESTAMP,
+                NULL,
+                NULL
+            FROM temp_pd_sched_pc pd
+            {eligibilityPredicate} AND {dutyExistsPredicate}",
+            connection)
+        {
+            CommandTimeout = _settings.CommandTimeout,
+            BindByName = true
+        })
+        {
+            insertCmd.Parameters.Add("series", OracleDbType.Varchar2, seriesValue, System.Data.ParameterDirection.Input);
+            insertCmd.Parameters.Add("orgCode", OracleDbType.Varchar2, orgCodeValue, System.Data.ParameterDirection.Input);
 
-        var stagedCount = Convert.ToInt32(stagedCountParameter.Value);
-        var excludedWithoutDutiesCount = Convert.ToInt32(excludedCountParameter.Value);
+            stagedCount = await insertCmd.ExecuteNonQueryAsync();
+        }
+
         _logger.LogInformation(
-            "Oracle TEMP source bulk staging procedure inserted {StagedCount} rows and excluded {ExcludedWithoutDutiesCount} headers without duties",
+            "Oracle TEMP source bulk staging inserted {StagedCount} rows and excluded {ExcludedWithoutDutiesCount} headers without duties",
             stagedCount,
             excludedWithoutDutiesCount);
         return new StagingResult(stagedCount, excludedWithoutDutiesCount);
     }
+
 
     public async Task<List<SeriesCounts>> GetSeriesCountsAsync()
     {

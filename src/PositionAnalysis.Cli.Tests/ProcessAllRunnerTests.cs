@@ -23,7 +23,7 @@ public class ProcessAllRunnerTests
         var exitCode = await runner.RunAsync();
 
         Assert.Equal(0, exitCode);
-        Assert.Equal(new[] { "process_all_pds", "get_queue_status", "get_queue_status" }, client.ToolCalls);
+        Assert.Equal(new[] { "run_unattended_scoring", "get_queue_status", "get_queue_status" }, client.ToolCalls);
         Assert.Single(delays);
         Assert.Equal(interval, delays[0]);
     }
@@ -38,7 +38,7 @@ public class ProcessAllRunnerTests
         var exitCode = await runner.RunAsync();
 
         Assert.Equal(1, exitCode);
-        Assert.Equal(1, client.ToolCalls.Count(name => name == "process_all_pds"));
+        Assert.Equal(1, client.ToolCalls.Count(name => name == "run_unattended_scoring"));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public class ProcessAllRunnerTests
         var exitCode = await runner.RunAsync();
 
         Assert.Equal(1, exitCode);
-        Assert.Equal(new[] { "process_all_pds", "get_queue_status" }, client.ToolCalls);
+        Assert.Equal(new[] { "run_unattended_scoring", "get_queue_status" }, client.ToolCalls);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class ProcessAllRunnerTests
 
             return name switch
             {
-                "process_all_pds" => Task.FromResult(EmptyResponse()),
+                "run_unattended_scoring" => Task.FromResult(EmptyResponse()),
                 "get_queue_status" when _queueStatuses.Count > 0 => Task.FromResult(_queueStatuses.Dequeue()),
                 _ => throw new InvalidOperationException($"Unexpected MCP tool call: {name}.")
             };

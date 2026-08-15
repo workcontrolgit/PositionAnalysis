@@ -4,12 +4,12 @@ using PositionAnalysis.Mcp.MCP;
 
 namespace PositionAnalysis.Mcp.MCP.Tools;
 
-public class ProcessAllPdsToolHandler : IMcpToolHandler
+public class RunUnattendedScoringToolHandler : IMcpToolHandler
 {
     private readonly IScoringOrchestrator _scoringOrchestrator;
     private readonly ProcessAllRunStatusService _runStatusService;
 
-    public ProcessAllPdsToolHandler(
+    public RunUnattendedScoringToolHandler(
         IScoringOrchestrator scoringOrchestrator,
         ProcessAllRunStatusService runStatusService)
     {
@@ -17,7 +17,7 @@ public class ProcessAllPdsToolHandler : IMcpToolHandler
         _runStatusService = runStatusService;
     }
 
-    public string Name => "process_all_pds";
+    public string Name => "run_unattended_scoring";
 
     public string Description => "Start asynchronous scoring for all staged PENDING PDs across every occupational series";
 

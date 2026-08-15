@@ -4,7 +4,7 @@
     Registers a Windows Scheduled Task to run the PositionAnalysis CLI unattended.
 
 .DESCRIPTION
-    Creates a Task Scheduler task that runs PositionAnalysis.Cli.exe --process-all
+    Creates a Task Scheduler task that runs PositionAnalysis.Cli.exe --unattended
     on a configurable daily schedule. Runs as SYSTEM so no user login is required.
     Must be run as Administrator.
 
@@ -57,10 +57,10 @@ Write-Host "  Exe:     $ExePath"
 Write-Host "  Trigger: Daily at $RunAt"
 Write-Host "  User:    $RunAsUser"
 
-# Action: run the exe with --process-all
+# Action: run the exe with --unattended
 $action = New-ScheduledTaskAction `
     -Execute $ExePath `
-    -Argument "--process-all" `
+    -Argument "--unattended" `
     -WorkingDirectory $workingDir
 
 # Trigger: daily at the specified time

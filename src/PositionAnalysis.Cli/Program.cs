@@ -37,21 +37,21 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
-    var processAllMode = args.Length == 1 && args[0].Equals("--process-all", StringComparison.OrdinalIgnoreCase);
+    var unattendedMode = args.Length == 1 && args[0].Equals("--unattended", StringComparison.OrdinalIgnoreCase);
     var schedulePcMcpLaunchCommand = SchedulePcMcpLaunchResolver.Resolve(AppContext.BaseDirectory);
 
     await using var mcpClient = new StdioMcpClient(schedulePcMcpLaunchCommand);
     await mcpClient.StartAsync();
 
-    using var processAllCancellation = new CancellationTokenSource();
+    using var unattendedCancellation = new CancellationTokenSource();
     AppDomain.CurrentDomain.ProcessExit += (_, _) => mcpClient.KillProcess();
 
     Console.CancelKeyPress += (_, eventArgs) =>
     {
         eventArgs.Cancel = true;
-        if (processAllMode)
+        if (unattendedMode)
         {
-            processAllCancellation.Cancel();
+            unattendedCancellation.Cancel();
             return;
         }
 
@@ -59,13 +59,13 @@ try
         Environment.Exit(0);
     };
 
-    if (processAllMode)
+    if (unattendedMode)
     {
         Environment.ExitCode = await new ProcessAllRunner(
             mcpClient,
             TimeSpan.FromSeconds(30),
             (Func<TimeSpan, CancellationToken, Task>)Task.Delay,
-            Log.Logger).RunAsync(processAllCancellation.Token);
+            Log.Logger).RunAsync(unattendedCancellation.Token);
         return;
     }
 
@@ -293,9 +293,6 @@ class PositionAnalysisChatClient
         var stagedCount = result.TryGetProperty("stagedCount", out var sc) && sc.TryGetInt32(out var n) ? n : 0;
 
         AnsiConsole.MarkupLine($"[green]Staging complete.[/] Staged: [bold]{stagedCount}[/] position descriptions.");
-
-        var report = await _mcpClient.CallToolAsync("get_staging_report", new { });
-        RenderStagingSummaryReport("Staging Report", report);
     }
 
     private async Task ShowStatusAsync()
@@ -310,37 +307,10 @@ class PositionAnalysisChatClient
         RenderSeriesReport($"Processing Status: series {string.Join(", ", series)}", status);
     }
 
-    private async Task ShowStatusByOrgsAsync(IReadOnlyList<string> orgCodes)
-    {
-        var status = await _mcpClient.CallToolAsync("get_processing_status_by_orgs", new { orgCodes });
-        RenderSeriesReport($"Processing Status: org(s) {string.Join(", ", orgCodes)}", status);
-    }
-
     private async Task ShowStatusByPdAsync(IReadOnlyList<string> pdNumbers)
     {
         var status = await _mcpClient.CallToolAsync("get_processing_status_by_pd", new { pdNumbers });
         RenderPdStatusReport($"Processing Status: PD {string.Join(", ", pdNumbers)}", status);
-    }
-
-    private async Task ProcessAsync(string seriesInput)
-    {
-        var series = ParseSeriesList(seriesInput);
-        if (series.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]Provide one or more series.[/] Example: [bold]process 0301,0560[/]");
-            return;
-        }
-
-        var pendingCount = await GetSeriesStatusSumAsync(series, "staged");
-        if (!ConfirmLlmCost($"unscored PD(s) in series {Markup.Escape(string.Join(", ", series))}", pendingCount))
-            return;
-
-        var result = await _mcpClient.CallToolAsync("process_pds_by_series", new
-        {
-            series
-        });
-
-        AnsiConsole.MarkupLine($"[green]{Markup.Escape(result.GetProperty("status").GetString() ?? "processing_started")}[/]");
     }
 
     private async Task ProcessPdAsync(string pdNbr)
@@ -362,7 +332,7 @@ class PositionAnalysisChatClient
         if (!ConfirmAction("generate Word documents for", $"[bold]{completeCount}[/] completed evaluation(s)", completeCount))
             return;
 
-        var result = await _mcpClient.CallToolAsync("generate_documents", new { });
+        var result = await _mcpClient.CallToolAsync("generate_documents_all", new { });
         AnsiConsole.MarkupLine($"[green]Documents generated:[/] [bold]{result.GetProperty("generated").GetInt32()}[/]");
     }
 
@@ -401,7 +371,7 @@ class PositionAnalysisChatClient
         if (!ConfirmAction("export", $"[bold]{totalCount}[/] evaluation result row(s) to Excel", totalCount))
             return;
 
-        var result = await _mcpClient.CallToolAsync("export_results", new { });
+        var result = await _mcpClient.CallToolAsync("export_results_all", new { });
         AnsiConsole.MarkupLine($"[green]Export status:[/] [bold]{result.GetProperty("exported").GetInt32()}[/] / {result.GetProperty("total").GetInt32()}");
     }
 
@@ -450,19 +420,6 @@ class PositionAnalysisChatClient
         var result = await _mcpClient.CallToolAsync("rescore_pds_by_series", new { series });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
         AnsiConsole.MarkupLine($"[green]Rescore complete:[/] series [bold]{Markup.Escape(string.Join(", ", series))}[/]");
-        if (!string.IsNullOrWhiteSpace(status))
-            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
-    }
-
-    private async Task RescoreAllAsync()
-    {
-        var totalCount = await GetAllStatusSumAsync("staged", "inProgress", "complete", "failed");
-        if (!ConfirmLlmCost("all staged PD(s) (forced rescore)", totalCount))
-            return;
-
-        var result = await _mcpClient.CallToolAsync("rescore_all_pds", new { });
-        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
-        AnsiConsole.MarkupLine("[green]Rescore complete:[/] all staged PDs");
         if (!string.IsNullOrWhiteSpace(status))
             AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
     }
@@ -530,38 +487,6 @@ class PositionAnalysisChatClient
             AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
     }
 
-    private async Task RescoreHumanSchedulePcAsync()
-    {
-        if (!AnsiConsole.Confirm("[yellow]This will call the LLM to rescore all human-flagged Schedule P/C PDs found, which incurs cost. Continue?[/]"))
-        {
-            AnsiConsole.MarkupLine("[grey]Cancelled.[/]");
-            return;
-        }
-
-        var result = await _mcpClient.CallToolAsync("rescore_human_schedule_pc_pds", new { });
-
-        if (result.TryGetProperty("error", out var errorEl))
-        {
-            AnsiConsole.MarkupLine($"[red]Rescore refused:[/] {Markup.Escape(errorEl.GetString() ?? "")}");
-            return;
-        }
-
-        var selectedCount = result.TryGetProperty("selectedCount", out var sc) && sc.TryGetInt32(out var n1) ? n1 : 0;
-        var scoredCount = result.TryGetProperty("scoredCount", out var scd) && scd.TryGetInt32(out var n2) ? n2 : 0;
-        var failedCount = result.TryGetProperty("failedCount", out var fc) && fc.TryGetInt32(out var n3) ? n3 : 0;
-        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
-
-        AnsiConsole.MarkupLine($"[green]Rescore complete:[/] {scoredCount}/{selectedCount} human-flagged Schedule P/C PDs (failed: {failedCount})");
-        if (!string.IsNullOrWhiteSpace(status))
-            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
-
-        if (failedCount > 0 && result.TryGetProperty("failedPdNumbers", out var failedEl))
-        {
-            var failedPdNumbers = failedEl.EnumerateArray().Select(e => e.GetString()).Where(v => v is not null);
-            AnsiConsole.MarkupLine($"[yellow]Failed PDs:[/] {Markup.Escape(string.Join(", ", failedPdNumbers))}");
-        }
-    }
-
     private async Task RetryFailedAsync()
     {
         var result = await _mcpClient.CallToolAsync("retry_failed_pds", new { });
@@ -579,7 +504,7 @@ class PositionAnalysisChatClient
         if (!ConfirmLlmCost("all pending PD(s) (parallel batch)", pendingCount))
             return;
 
-        await RunBatchWithProgressAsync("process_batch", new { });
+        await RunBatchWithProgressAsync("process_batch_all", new { });
     }
 
     private async Task ProcessBatchBySeriesAsync(IReadOnlyList<string> series)
@@ -634,7 +559,7 @@ class PositionAnalysisChatClient
         if (!ConfirmLlmCost("unscored PD(s) across all staged series", pendingCount))
             return;
 
-        var result = await _mcpClient.CallToolAsync("process_all_pds", new { });
+        var result = await _mcpClient.CallToolAsync("run_unattended_scoring", new { });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "processing_started" : "processing_started";
         AnsiConsole.MarkupLine($"[green]{Markup.Escape(status)}[/] — scoring all staged PDs across all series.");
     }
@@ -727,6 +652,10 @@ class PositionAnalysisChatClient
 
     private async Task ClearSchedulePcEvalAsync()
     {
+        var totalCount = await GetAllStatusSumAsync("staged", "inProgress", "complete", "failed");
+        if (!ConfirmAction("permanently delete ALL records from", $"[bold]{totalCount}[/] row(s) in SCHEDULE_PC_EVAL", totalCount))
+            return;
+
         var result = await _mcpClient.CallToolAsync("clear_schedule_pc_eval", new { });
         var deleted = result.TryGetProperty("deletedCount", out var d) && d.TryGetInt32(out var count) ? count : 0;
         AnsiConsole.MarkupLine($"[green]SCHEDULE_PC_EVAL cleared.[/] Deleted rows: [bold]{deleted}[/]");
@@ -899,25 +828,15 @@ class PositionAnalysisChatClient
             return true;
         }
 
-        if (IsStagingReportPrompt(normalized))
-        {
-            var report = await _mcpClient.CallToolAsync("get_staging_report", new { });
-            RenderStagingSummaryReport("Staging Report", report);
-            return true;
-        }
-
         if (IsProcessingStatusPrompt(normalized))
         {
             var pdNumbers = ExtractPdNumbers(userInput);
             var series = ExtractSeriesCodes(userInput);
-            var orgCodes = ExtractOrgCodes(userInput);
 
             if (pdNumbers.Count > 0)
                 await ShowStatusByPdAsync(pdNumbers);
             else if (series.Count > 0)
                 await ShowStatusBySeriesAsync(series);
-            else if (orgCodes.Count > 0)
-                await ShowStatusByOrgsAsync(orgCodes);
             else
                 await ShowStatusAsync();
 
@@ -974,12 +893,6 @@ class PositionAnalysisChatClient
             return true;
         }
 
-        if (IsRescoreAllPrompt(normalized))
-        {
-            await RescoreAllAsync();
-            return true;
-        }
-
         if (IsRescoreFlaggedPrompt(normalized))
         {
             var pdNumbers = ExtractPdNumbers(userInput);
@@ -1000,12 +913,6 @@ class PositionAnalysisChatClient
         if (IsRescoreBySeriesPrompt(normalized))
         {
             await RescoreBySeriesAsync(userInput);
-            return true;
-        }
-
-        if (IsRescoreHumanSchedulePcPrompt(normalized))
-        {
-            await RescoreHumanSchedulePcAsync();
             return true;
         }
 
@@ -1076,7 +983,7 @@ class PositionAnalysisChatClient
                 return true;
             }
 
-            await ProcessAsync(string.Join(",", series));
+            await ProcessBatchBySeriesAsync(series);
             return true;
         }
 
@@ -1090,12 +997,6 @@ class PositionAnalysisChatClient
         return false;
     }
 
-    private static bool IsStagingReportPrompt(string normalized) =>
-        normalized.Contains("staging report") ||
-        normalized.Contains("stage report") ||
-        normalized.Contains("get_staging_report") ||
-        normalized.Contains("show staged report") ||
-        normalized.Contains("staged report");
 
     private static bool IsProcessingStatusPrompt(string normalized) =>
         normalized.Contains("processing status") ||
@@ -1119,12 +1020,15 @@ class PositionAnalysisChatClient
         normalized.Contains("load for staging");
 
     private static bool IsClearTablePrompt(string normalized) =>
+        normalized.Contains("clear_schedule_pc_eval") ||
         normalized.Contains("clear schedule_pc_eval") ||
         normalized.Contains("clear schedule pc eval") ||
         normalized.Contains("remove all records") ||
         normalized.Contains("delete all records") ||
         normalized.Contains("truncate schedule_pc_eval") ||
-        normalized.Contains("reset staging table");
+        normalized.Contains("reset staging table") ||
+        ((normalized.Contains("clear") || normalized.Contains("delete") || normalized.Contains("remove") || normalized.Contains("truncate") || normalized.Contains("wipe"))
+            && (normalized.Contains("schedule_pc_eval") || normalized.Contains("schedule pc eval") || normalized.Contains("staging table")));
 
     private static bool IsProcessPrompt(string normalized) =>
         normalized.StartsWith("process") ||
@@ -1301,41 +1205,6 @@ class PositionAnalysisChatClient
         AnsiConsole.WriteLine();
     }
 
-    private static void RenderStagingSummaryReport(string title, JsonElement report)
-    {
-        AnsiConsole.Write(new Rule($"[bold teal]{Markup.Escape(title)}[/]").RuleStyle("teal").LeftJustified());
-        AnsiConsole.WriteLine();
-
-        var table = new Spectre.Console.Table()
-            .BorderColor(Color.Teal)
-            .AddColumn(new TableColumn("[bold cyan]SERIES[/]").Centered())
-            .AddColumn(new TableColumn("[bold cyan]STAGED[/]").Centered())
-            .AddColumn(new TableColumn("[bold cyan]IN_PROGRESS[/]").Centered())
-            .AddColumn(new TableColumn("[bold cyan]COMPLETE[/]").Centered())
-            .AddColumn(new TableColumn("[bold cyan]FAILED[/]").Centered());
-
-        if (report.TryGetProperty("series", out var seriesArray) && seriesArray.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in seriesArray.EnumerateArray())
-            {
-                var series = item.TryGetProperty("series", out var s) ? s.GetString() ?? string.Empty : string.Empty;
-                var staged = item.TryGetProperty("staged", out var st) && st.TryGetInt32(out var stagedValue) ? stagedValue : 0;
-                var inProgress = item.TryGetProperty("inProgress", out var ip) && ip.TryGetInt32(out var inProgressValue) ? inProgressValue : 0;
-                var complete = item.TryGetProperty("complete", out var c) && c.TryGetInt32(out var completeValue) ? completeValue : 0;
-                var failed = item.TryGetProperty("failed", out var f) && f.TryGetInt32(out var failedValue) ? failedValue : 0;
-
-                table.AddRow(
-                    Markup.Escape(series),
-                    staged.ToString(),
-                    inProgress.ToString(),
-                    complete.ToString(),
-                    failed.ToString());
-            }
-        }
-
-        AnsiConsole.Write(table);
-        AnsiConsole.WriteLine();
-    }
 
     private static bool IsIdentityPrompt(string input)
     {
@@ -1366,16 +1235,10 @@ class PositionAnalysisChatClient
         normalized.Contains("batch process");
 
     private static bool IsProcessAllPrompt(string normalized) =>
-        normalized.Contains("process_all_pds") ||
+        normalized.Contains("run_unattended_scoring") ||
         normalized.Contains("process all pds") ||
         normalized.Contains("process all") ||
         normalized.Contains("score all");
-
-    private static bool IsRescoreAllPrompt(string normalized) =>
-        normalized.Contains("rescore_all") ||
-        normalized.Contains("rescore all") ||
-        normalized.Contains("re-score all") ||
-        normalized.Contains("force rescore all");
 
     private static bool IsRescoreFlaggedPrompt(string normalized) =>
         normalized.Contains("rescore_flagged_pds") ||
@@ -1388,13 +1251,6 @@ class PositionAnalysisChatClient
         normalized.Contains("rescore series") ||
         normalized.Contains("rescore by series") ||
         normalized.Contains("re-score series");
-
-    private static bool IsRescoreHumanSchedulePcPrompt(string normalized) =>
-        normalized.Contains("rescore_human_schedule_pc_pds") ||
-        normalized.Contains("rescore human") ||
-        normalized.Contains("re-score human") ||
-        normalized.Contains("rescore the 90") ||
-        normalized.Contains("score the 90");
 
     private static bool IsRescorePdPrompt(string normalized) =>
         normalized.StartsWith("rescore_pd") ||
@@ -1691,7 +1547,7 @@ public sealed class ProcessAllRunner
         {
             _logger.Information("Starting unattended Schedule PC scoring run");
             cancellationToken.ThrowIfCancellationRequested();
-            await _mcpClient.CallToolAsync("process_all_pds", new { });
+            await _mcpClient.CallToolAsync("run_unattended_scoring", new { });
 
             while (true)
             {

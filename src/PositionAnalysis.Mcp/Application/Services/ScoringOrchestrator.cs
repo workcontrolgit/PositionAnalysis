@@ -97,77 +97,6 @@ Be objective and ground every finding in specific language from the duties text.
     }
 
     /// <summary>
-    /// Scores all Position Descriptions for specified occupational series
-    /// Iterates through series and calls ScoreAsync for each PD
-    /// </summary>
-    public async Task ScoreBySeriesAsync(IEnumerable<string> series)
-    {
-        if (series == null)
-            throw new ArgumentNullException(nameof(series));
-
-        var seriesList = series.ToList();
-        if (seriesList.Count == 0)
-        {
-            _logger.LogWarning("No series provided for scoring");
-            return;
-        }
-
-        _logger.LogInformation("Starting batch scoring across {SeriesCount} series", seriesList.Count);
-
-        int totalScored = 0;
-        int totalFailed = 0;
-
-        foreach (var seriesCode in seriesList)
-        {
-            if (string.IsNullOrWhiteSpace(seriesCode))
-            {
-                _logger.LogWarning("Skipping empty series code");
-                continue;
-            }
-
-            try
-            {
-                var occupationalSeries = new OccupationalSeries(seriesCode);
-
-                _logger.LogInformation("Processing series {Series}", seriesCode);
-
-                var pdsToScore = await _evalRepository.GetBySeriesAsync(occupationalSeries);
-                var unscored = pdsToScore.Where(r => r.Rating == "PENDING").ToList();
-
-                _logger.LogDebug("Found {Count} unscored PDs for series {Series}", unscored.Count, seriesCode);
-
-                foreach (var result in unscored)
-                {
-                    try
-                    {
-                        await ScoreAsync(result.PdNbr);
-                        totalScored++;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to score PD {PdNbr} in series {Series}",
-                            result.PdNbr, seriesCode);
-                        totalFailed++;
-                    }
-                }
-            }
-            catch (ArgumentException ex)
-            {
-                _logger.LogError(ex, "Invalid series code {Series}", seriesCode);
-                totalFailed++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unhandled error processing series {Series}", seriesCode);
-                totalFailed++;
-            }
-        }
-
-        _logger.LogInformation(
-            "Batch scoring completed: {Scored} scored, {Failed} failed",
-            totalScored, totalFailed);
-    }
-
     public async Task RescoreBySeriesAsync(IEnumerable<string> series)
     {
         if (series == null)
@@ -224,21 +153,6 @@ Be objective and ground every finding in specific language from the duties text.
         }
 
         _logger.LogInformation("Force rescore completed: {Scored} scored, {Failed} failed", totalScored, totalFailed);
-    }
-
-    public async Task RescoreAllAsync()
-    {
-        var counts = await _evalRepository.GetSeriesCountsAsync();
-        var allSeries = counts.Select(c => c.Series).ToList();
-
-        if (allSeries.Count == 0)
-        {
-            _logger.LogWarning("RescoreAllAsync: no staged series found");
-            return;
-        }
-
-        _logger.LogInformation("RescoreAllAsync: force rescoring all {Count} staged series", allSeries.Count);
-        await RescoreBySeriesAsync(allSeries);
     }
 
     public async Task RescoreFlaggedAsync()
@@ -611,8 +525,11 @@ positionPurpose must be descriptive, not evaluative, and should synthesize both 
                     {
                         foreach (var dutyNumEl in dutyNumsEl.EnumerateArray())
                         {
-                            if (dutyNumEl.TryGetInt32(out var dutyNum))
+                            // Some local models (e.g. Ollama) emit duty numbers as JSON strings instead of numbers.
+                            if (dutyNumEl.ValueKind == JsonValueKind.Number && dutyNumEl.TryGetInt32(out var dutyNum))
                                 cs.SupportingDutyNumbers.Add(dutyNum);
+                            else if (dutyNumEl.ValueKind == JsonValueKind.String && int.TryParse(dutyNumEl.GetString(), out var dutyNumFromString))
+                                cs.SupportingDutyNumbers.Add(dutyNumFromString);
                         }
                     }
 

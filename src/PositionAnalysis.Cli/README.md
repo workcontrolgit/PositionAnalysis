@@ -58,7 +58,7 @@ Schedule PC> query grade 13-15
 Run the existing Schedule PC scoring queue without starting the interactive chat client:
 
 ```powershell
-dotnet run -- --process-all
+dotnet run -- --unattended
 ```
 
 This starts the SchedulePCMcp child process, triggers scoring for all currently queued PDs, and polls the aggregate queue until no work remains. It does not stage PDs, generate documents, or export results.

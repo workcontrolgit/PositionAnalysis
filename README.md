@@ -11,12 +11,12 @@ forms and Excel exports for HR review.
 ```
 PositionAnalysis.Cli  →  PositionAnalysis.Mcp  →  Oracle (SCHEDULE_PC_EVAL, MAX_PD_VW)
   (interactive chat            (MCP server,              →  Azure OpenAI (scoring)
-   or --process-all)          spawned as a child
+   or --unattended)          spawned as a child
                                process over stdio)
 ```
 
 - **`PositionAnalysis.Cli`** — the executable users run, either interactively (natural
-  language chat) or unattended (`--process-all`, for scheduled scoring runs). It always
+  language chat) or unattended (`--unattended`, for scheduled scoring runs). It always
   launches `PositionAnalysis.Mcp` as a child process and talks to it via MCP tool calls; you
   never run `PositionAnalysis.Mcp` directly.
 - **`PositionAnalysis.Mcp`** — the MCP server. Owns all Oracle access, LLM scoring calls,

@@ -1,6 +1,6 @@
 # How to Run Position Analysis Scoring Workers (Unattended)
 
-Run the Position Analysis Schedule PC scoring queue unattended (`--process-all`) on a
+Run the Position Analysis Schedule PC scoring queue unattended (`--unattended`) on a
 schedule, across one or more machines, using Windows Task Scheduler.
 
 `PositionAnalysis.Cli` is the executable users run. It launches `PositionAnalysis.Mcp` as a
@@ -10,10 +10,10 @@ child process over stdio and talks to it through MCP tool calls — you never ru
 For interactive/console chat mode instead, see
 [how-to-positionanalysis-interactive-chat.md](how-to-positionanalysis-interactive-chat.md).
 
-## What `--process-all` does
+## What `--unattended` does
 
-`PositionAnalysis.Cli.exe --process-all` starts the `PositionAnalysis.Mcp` child process,
-triggers the `process_all_pds` MCP tool, then polls `get_queue_status` until the queue is
+`PositionAnalysis.Cli.exe --unattended` starts the `PositionAnalysis.Mcp` child process,
+triggers the `run_unattended_scoring` MCP tool, then polls `get_queue_status` until the queue is
 drained. It scores only — it does not stage PDs, generate documents, or export results.
 
 ## Prerequisites

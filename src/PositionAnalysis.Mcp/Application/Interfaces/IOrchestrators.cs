@@ -16,7 +16,6 @@ public interface IStagingOrchestrator
 /// </summary>
 public interface IReportingService
 {
-    Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync();
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportAsync();
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportBySeriesAsync(IEnumerable<string> series);
     Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportByOrgCodesAsync(IEnumerable<string> orgCodes);
@@ -36,12 +35,6 @@ public interface IScoringOrchestrator
     Task ScoreAsync(string pdNbr);
 
     /// <summary>
-    /// Scores all Position Descriptions for specified occupational series
-    /// </summary>
-    /// <param name="series">Enumerable of occupational series codes (5-digit strings)</param>
-    Task ScoreBySeriesAsync(IEnumerable<string> series);
-
-    /// <summary>
     /// Scores all PENDING Position Descriptions across every staged series
     /// </summary>
     Task ScoreAllAsync();
@@ -50,11 +43,6 @@ public interface IScoringOrchestrator
     /// Forces a fresh rescore of all PDs in the specified series, regardless of current status
     /// </summary>
     Task RescoreBySeriesAsync(IEnumerable<string> series);
-
-    /// <summary>
-    /// Forces a fresh rescore of every staged PD across all series, regardless of current status
-    /// </summary>
-    Task RescoreAllAsync();
 
     /// <summary>
     /// Forces a fresh rescore of every PD flagged needs_rescore = 'Y'

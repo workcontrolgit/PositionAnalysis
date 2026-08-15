@@ -19,19 +19,6 @@ public class ReportingService : IReportingService
         _pdRepository = pdRepository ?? throw new ArgumentNullException(nameof(pdRepository));
     }
 
-    public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetStagingReportAsync()
-    {
-        var counts = await _evalRepository.GetSeriesCountsAsync();
-        var output = new Dictionary<OccupationalSeries, SeriesStatus>();
-        foreach (var item in counts)
-        {
-            var series = new OccupationalSeries(item.Series);
-            output[series] = new SeriesStatus(series, item.Staged, item.InProgress, item.Complete, item.Failed);
-        }
-
-        return output;
-    }
-
     public async Task<Dictionary<OccupationalSeries, SeriesStatus>> GetProcessingReportAsync()
     {
         var results = await _evalRepository.GetAllAsync();

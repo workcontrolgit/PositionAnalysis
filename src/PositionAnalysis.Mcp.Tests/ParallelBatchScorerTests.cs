@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using PositionAnalysis.Mcp.Application.Interfaces;
 using PositionAnalysis.Mcp.Domain.Entities;
 using PositionAnalysis.Mcp.Domain.ValueObjects;
+using PositionAnalysis.Mcp.Infrastructure.Config;
 using PositionAnalysis.Mcp.MCP;
 using PositionAnalysis.Mcp.MCP.Tools;
 using Xunit;
@@ -22,7 +24,7 @@ public class ParallelBatchScorerTests
         services.AddSingleton<IScoringOrchestrator>(orchestrator);
         var provider = services.BuildServiceProvider();
         var scopeFactory = provider.GetRequiredService<IServiceScopeFactory>();
-        var scorer = new ParallelBatchScorer(scopeFactory, NullLogger<ParallelBatchScorer>.Instance);
+        var scorer = new ParallelBatchScorer(scopeFactory, Options.Create(new McpSettings()), NullLogger<ParallelBatchScorer>.Instance);
         return (scorer, orchestrator);
     }
 
@@ -222,10 +224,8 @@ public class ParallelBatchScorerTests
             return Task.CompletedTask;
         }
 
-        public Task ScoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task ScoreAllAsync() => Task.CompletedTask;
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
-        public Task RescoreAllAsync() => Task.CompletedTask;
         public Task RescoreFlaggedAsync() => Task.CompletedTask;
         public Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers) => Task.CompletedTask;
