@@ -174,22 +174,29 @@ public class OllamaAiClient : IAiClient
             };
 
             var responseBuilder = new StringBuilder();
+            int promptTokens = 0;
+            int completionTokens = 0;
 
             await foreach (var response in client.GenerateAsync(request))
             {
-                if (response != null)
-                    responseBuilder.Append(response.Response);
+                if (response == null) continue;
+                responseBuilder.Append(response.Response);
+                if (response is OllamaSharp.Models.GenerateDoneResponseStream done)
+                {
+                    promptTokens = done.PromptEvalCount;
+                    completionTokens = done.EvalCount;
+                }
             }
 
             var fullResponse = responseBuilder.ToString();
 
-            _logger.LogDebug("Received Ollama response: {ResponseLength} chars (local — no cost)",
-                fullResponse.Length);
+            _logger.LogDebug("Received Ollama response: {ResponseLength} chars, {PromptTokens} prompt + {CompletionTokens} completion tokens (local — no cost)",
+                fullResponse.Length, promptTokens, completionTokens);
 
             return new AiCompletionResult(
                 Content: fullResponse,
-                PromptTokens: 0,
-                CompletionTokens: 0,
+                PromptTokens: promptTokens,
+                CompletionTokens: completionTokens,
                 IsSuccess: true,
                 EstimatedCostUsd: 0m);
         }

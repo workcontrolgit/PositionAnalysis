@@ -1,18 +1,18 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using PositionAnalysis.Mcp.Infrastructure.Repositories;
 
 namespace PositionAnalysis.Mcp.MCP.Tools;
 
-public class RetryFailedPdsToolHandler : IMcpToolHandler
+public class ResetFailedToStagedToolHandler : IMcpToolHandler
 {
     private readonly IPositionAnalysisEvalRepository _evalRepository;
 
-    public RetryFailedPdsToolHandler(IPositionAnalysisEvalRepository evalRepository)
+    public ResetFailedToStagedToolHandler(IPositionAnalysisEvalRepository evalRepository)
     {
         _evalRepository = evalRepository;
     }
 
-    public string Name => "retry_failed_pds";
+    public string Name => "reset_failed_to_staged";
 
     public string Description => "Reset all FAILED evaluation rows back to PENDING so they will be re-scored on the next process_batch_by_series or run_unattended_scoring call";
 

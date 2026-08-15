@@ -489,7 +489,7 @@ class PositionAnalysisChatClient
 
     private async Task RetryFailedAsync()
     {
-        var result = await _mcpClient.CallToolAsync("retry_failed_pds", new { });
+        var result = await _mcpClient.CallToolAsync("reset_failed_to_staged", new { });
         var resetCount = result.TryGetProperty("resetCount", out var r) && r.TryGetInt32(out var n) ? n : 0;
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
         AnsiConsole.MarkupLine($"[green]Retry reset:[/] [bold]{resetCount}[/] failed PD(s) reset to PENDING.");
@@ -1213,6 +1213,7 @@ class PositionAnalysisChatClient
     }
 
     private static bool IsRetryFailedPrompt(string normalized) =>
+        normalized.Contains("reset_failed_to_staged") ||
         normalized.Contains("retry_failed_pds") ||
         normalized.Contains("retry failed") ||
         normalized.Contains("reset failed") ||

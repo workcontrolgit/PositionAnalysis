@@ -141,7 +141,7 @@ public class Program
 
                 // MCP Tool Handlers
                 services.AddScoped<IMcpToolHandler, StagePdsToolHandler>();
-                services.AddScoped<IMcpToolHandler, RetryFailedPdsToolHandler>();
+                services.AddScoped<IMcpToolHandler, ResetFailedToStagedToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescorePdToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescorePdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsToolHandler>();

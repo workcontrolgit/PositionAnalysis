@@ -456,12 +456,45 @@ positionPurpose must be descriptive, not evaluative, and should synthesize both 
         return trimmed.Trim();
     }
 
+    /// <summary>
+    /// Extracts the first complete JSON object from a string, ignoring any text before or after it.
+    /// Handles models that emit preamble or trailing commentary around the JSON.
+    /// </summary>
+    private static string ExtractJsonObject(string text)
+    {
+        var start = text.IndexOf('{');
+        if (start < 0) return text;
+
+        int depth = 0;
+        bool inString = false;
+        bool escaped = false;
+
+        for (int i = start; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (escaped) { escaped = false; continue; }
+            if (c == '\\' && inString) { escaped = true; continue; }
+            if (c == '"') { inString = !inString; continue; }
+            if (inString) continue;
+
+            if (c == '{') depth++;
+            else if (c == '}')
+            {
+                depth--;
+                if (depth == 0)
+                    return text[start..(i + 1)];
+            }
+        }
+
+        return text[start..]; // unclosed — return what we have and let the parser error
+    }
+
     private EvaluationResult ParseLlmResponse(PositionDescription pd, string llmResponse)
     {
         _logger.LogDebug("Parsing LLM response for {PdNbr}: {ResponseLength} characters",
             pd.PdNbr, llmResponse.Length);
 
-        llmResponse = StripMarkdownFences(llmResponse);
+        llmResponse = ExtractJsonObject(StripMarkdownFences(llmResponse));
 
         var evaluationResult = new EvaluationResult
         {
