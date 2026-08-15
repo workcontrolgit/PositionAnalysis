@@ -218,7 +218,7 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
         while (await reader.ReadAsync())
         {
             var series = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
-            if (string.IsNullOrWhiteSpace(series) || series.Length != 5)
+            if (string.IsNullOrWhiteSpace(series))
                 continue;
 
             var staged = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1));
@@ -840,12 +840,11 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
         var pdNbr = reader.IsDBNull(0) ? string.Empty : reader.GetString(0);
         var seriesCode = reader.IsDBNull(1) ? string.Empty : reader.GetString(1);
 
-        if (string.IsNullOrWhiteSpace(seriesCode) || seriesCode.Length != 5)
+        if (string.IsNullOrWhiteSpace(seriesCode))
         {
             _logger.LogWarning(
-                "Skipping malformed evaluation row for PD {PdNbr}: invalid series '{SeriesCode}'",
-                pdNbr,
-                seriesCode);
+                "Skipping malformed evaluation row for PD {PdNbr}: missing series code",
+                pdNbr);
             return null;
         }
 

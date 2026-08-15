@@ -107,6 +107,8 @@ public class McpSettings
 {
     public bool EnableDevLogging { get; set; } = true;
     public bool EnableMetrics { get; set; } = true;
+    /// <summary>Maximum parallel PDs scored simultaneously by process_batch_* tools.</summary>
+    public int BatchConcurrency { get; set; } = 10;
 }
 
 /// <summary>

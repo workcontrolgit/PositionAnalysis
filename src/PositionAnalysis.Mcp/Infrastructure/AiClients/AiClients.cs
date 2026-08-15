@@ -246,16 +246,20 @@ public class AzureOpenAiClient : IAiClient
             using var client = new System.Net.Http.HttpClient();
             client.DefaultRequestHeaders.Add("api-key", _apiKey);
 
-            var requestBody = new
+            var requestBody = new Dictionary<string, object>
             {
-                messages = new object[]
+                ["messages"] = new object[]
                 {
                     new { role = "system", content = systemPrompt },
                     new { role = "user", content = prompt }
                 },
-                max_completion_tokens = _maxCompletionTokens,
-                temperature = _temperature
+                ["max_completion_tokens"] = _maxCompletionTokens
             };
+            // Some models (e.g. o-series, gpt-5) only accept the default temperature (1.0)
+            // and reject the parameter outright if any value is supplied.
+            // Only send it when explicitly overridden from the default.
+            if (Math.Abs(_temperature - 1.0f) > 1e-6f)
+                requestBody["temperature"] = _temperature;
 
             var url = $"{_endpoint}/openai/deployments/{_deploymentName}/chat/completions?api-version=2024-08-01-preview";
             var content = new System.Net.Http.StringContent(
