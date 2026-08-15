@@ -9,12 +9,12 @@ using Xunit;
 
 namespace PositionAnalysis.Mcp.Tests;
 
-public class GetQueueStatusToolHandlerTests
+public class RunUnattendedQueueStatusToolHandlerTests
 {
     [Fact]
     public async Task InvokeAsync_ReturnsAggregateQueueStatusWithDrainedState()
     {
-        var handler = new GetQueueStatusToolHandler(
+        var handler = new RunUnattendedQueueStatusToolHandler(
             new QueueStatusRepository(new QueueStatus(0, 0, 4, 1)),
             new ProcessAllRunStatusService());
         using var arguments = JsonDocument.Parse("{}");
@@ -50,9 +50,6 @@ public class GetQueueStatusToolHandlerTests
         public Task<List<EvaluationResult>> GetAllAsync() => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series) => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
-        public Task<List<EvaluationResult>> GetNeedsRescoreAsync() => throw new NotSupportedException();
-        public Task<List<EvaluationResult>> GetNeedsRescoreBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
-        public Task<List<EvaluationResult>> GetNeedsRescoreByPdNumbersAsync(IEnumerable<string> pdNumbers) => throw new NotSupportedException();
         public Task<int> GetCountByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
         public Task<int> ResetFailedAsync() => throw new NotSupportedException();
         public Task UpdateRatingAsync(string pdNbr, OccupationalSeries series, string rating, bool isCandidate) => throw new NotSupportedException();

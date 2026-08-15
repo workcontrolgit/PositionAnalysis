@@ -3,6 +3,7 @@ using Azure.AI.OpenAI;
 using elbruno.Extensions.AI.Claude;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using OllamaSharp;
 using PositionAnalysis.Cli;
@@ -73,6 +74,7 @@ try
     IChatClient chatClient = BuildChatClient(configuration, provider);
     var modelDisplay = GetModelDisplay(configuration, provider);
     var sqlclPath = configuration["SqlclMcp:Path"];
+    var sqlclConnectionName = configuration["SqlclMcp:ConnectionName"] ?? "acrs";
 
     // Display banner using Spectre.Console
     AnsiConsole.Write(new Rule("[bold cyan]Schedule PC Position Evaluation[/]").RuleStyle("cyan").LeftJustified());
@@ -102,7 +104,7 @@ try
         ? null
         : () => ListOracleToolNamesAsync(oracleMcpClient);
 
-    var client = new PositionAnalysisChatClient(chatClient, mcpClient, oracleToolNamesProvider, modelDisplay);
+    var client = new PositionAnalysisChatClient(chatClient, mcpClient, oracleToolNamesProvider, oracleMcpClient, sqlclConnectionName, modelDisplay);
     await client.RunAsync();
 }
 catch (Exception ex)
@@ -218,17 +220,23 @@ class PositionAnalysisChatClient
     private readonly IChatClient _chatClient;
     private readonly StdioMcpClient _mcpClient;
     private readonly Func<Task<IReadOnlyList<string>>>? _oracleToolNamesProvider;
+    private readonly McpClient? _oracleMcpClient;
+    private readonly string _oracleConnectionName;
     private readonly string _modelName;
 
     public PositionAnalysisChatClient(
         IChatClient chatClient,
         StdioMcpClient mcpClient,
         Func<Task<IReadOnlyList<string>>>? oracleToolNamesProvider,
+        McpClient? oracleMcpClient,
+        string oracleConnectionName,
         string modelName)
     {
         _chatClient = chatClient;
         _mcpClient = mcpClient;
         _oracleToolNamesProvider = oracleToolNamesProvider;
+        _oracleMcpClient = oracleMcpClient;
+        _oracleConnectionName = oracleConnectionName;
         _modelName = modelName;
     }
 
@@ -318,8 +326,8 @@ class PositionAnalysisChatClient
         if (!ConfirmLlmCost($"PD [bold]{Markup.Escape(pdNbr)}[/]", 1))
             return;
 
-        // No dedicated "process one PD" tool exists; rescore_pd scores it via the same ScoreAsync path.
-        var result = await _mcpClient.CallToolAsync("rescore_pd", new { pd_nbr = pdNbr });
+        // No dedicated "process one PD" tool exists; rescore_by_pds scores it via the same ScoreAsync path.
+        var result = await _mcpClient.CallToolAsync("rescore_by_pds", new { pds = new[] { pdNbr } });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
         AnsiConsole.MarkupLine($"[green]Scoring complete:[/] PD [bold]{Markup.Escape(pdNbr)}[/]");
         if (!string.IsNullOrWhiteSpace(status))
@@ -417,60 +425,9 @@ class PositionAnalysisChatClient
         if (!ConfirmLlmCost($"PD(s) in series {Markup.Escape(string.Join(", ", series))} (forced rescore)", totalCount))
             return;
 
-        var result = await _mcpClient.CallToolAsync("rescore_pds_by_series", new { series });
+        var result = await _mcpClient.CallToolAsync("rescore_by_series", new { series });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
         AnsiConsole.MarkupLine($"[green]Rescore complete:[/] series [bold]{Markup.Escape(string.Join(", ", series))}[/]");
-        if (!string.IsNullOrWhiteSpace(status))
-            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
-    }
-
-    private async Task RescoreFlaggedAsync()
-    {
-        var count = await GetNeedsRescoreCountAsync();
-        if (!ConfirmLlmCost("PD(s) flagged needs_rescore = 'Y'", count))
-            return;
-
-        var result = await _mcpClient.CallToolAsync("rescore_flagged_pds", new { });
-        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
-        AnsiConsole.MarkupLine("[green]Rescore complete:[/] all needs_rescore-flagged PDs");
-        if (!string.IsNullOrWhiteSpace(status))
-            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
-    }
-
-    private async Task RescoreFlaggedBySeriesAsync(IReadOnlyList<string> series)
-    {
-        if (series.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]No valid series codes found.[/] Series codes must be 5 digits, e.g. [bold]00201[/]. 0 PD(s) match.");
-            return;
-        }
-
-        var count = await GetNeedsRescoreCountAsync(series: series);
-        if (!ConfirmLlmCost($"PD(s) flagged needs_rescore = 'Y' in series {Markup.Escape(string.Join(", ", series))}", count))
-            return;
-
-        var result = await _mcpClient.CallToolAsync("rescore_flagged_pds_by_series", new { series });
-        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
-        AnsiConsole.MarkupLine($"[green]Rescore complete:[/] needs_rescore-flagged PDs in series [bold]{Markup.Escape(string.Join(", ", series))}[/]");
-        if (!string.IsNullOrWhiteSpace(status))
-            AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
-    }
-
-    private async Task RescoreFlaggedByPdAsync(IReadOnlyList<string> pdNumbers)
-    {
-        if (pdNumbers.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[yellow]No valid PD numbers found.[/] 0 PD(s) match.");
-            return;
-        }
-
-        var count = await GetNeedsRescoreCountAsync(pdNumbers: pdNumbers);
-        if (!ConfirmLlmCost($"PD(s) flagged needs_rescore = 'Y' among {Markup.Escape(string.Join(", ", pdNumbers))}", count))
-            return;
-
-        var result = await _mcpClient.CallToolAsync("rescore_flagged_pds_by_pd", new { pdNumbers });
-        var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
-        AnsiConsole.MarkupLine($"[green]Rescore complete:[/] needs_rescore-flagged PD(s) [bold]{Markup.Escape(string.Join(", ", pdNumbers))}[/]");
         if (!string.IsNullOrWhiteSpace(status))
             AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
     }
@@ -480,7 +437,7 @@ class PositionAnalysisChatClient
         if (!ConfirmLlmCost($"PD [bold]{Markup.Escape(pdNbr)}[/] (forced rescore)", 1))
             return;
 
-        var result = await _mcpClient.CallToolAsync("rescore_pd", new { pd_nbr = pdNbr });
+        var result = await _mcpClient.CallToolAsync("rescore_by_pds", new { pds = new[] { pdNbr } });
         var status = result.TryGetProperty("status", out var s) ? s.GetString() ?? "" : "";
         AnsiConsole.MarkupLine($"[green]Rescore complete:[/] PD [bold]{Markup.Escape(pdNbr)}[/]");
         if (!string.IsNullOrWhiteSpace(status))
@@ -497,9 +454,28 @@ class PositionAnalysisChatClient
             AnsiConsole.MarkupLine($"[grey]{Markup.Escape(status)}[/]");
     }
 
+    private async Task ShowQueueStatusAsync()
+    {
+        var result = await _mcpClient.CallToolAsync("get_unattended_queue_status", new { });
+        var pending    = result.TryGetProperty("pending",    out var p) && p.TryGetInt32(out var pn) ? pn : 0;
+        var inProgress = result.TryGetProperty("inProgress", out var ip) && ip.TryGetInt32(out var ipn) ? ipn : 0;
+        var complete   = result.TryGetProperty("complete",   out var c) && c.TryGetInt32(out var cn) ? cn : 0;
+        var failed     = result.TryGetProperty("failed",     out var f) && f.TryGetInt32(out var fn) ? fn : 0;
+        var isDrained  = result.TryGetProperty("isDrained",  out var d) && d.GetBoolean();
+        var runActive  = result.TryGetProperty("runActive",  out var ra) && ra.GetBoolean();
+
+        AnsiConsole.MarkupLine($"[bold]Queue Status[/]");
+        AnsiConsole.MarkupLine($"  Pending:     [yellow]{pending}[/]");
+        AnsiConsole.MarkupLine($"  In Progress: [blue]{inProgress}[/]");
+        AnsiConsole.MarkupLine($"  Complete:    [green]{complete}[/]");
+        AnsiConsole.MarkupLine($"  Failed:      [red]{failed}[/]");
+        AnsiConsole.MarkupLine($"  Drained:     {(isDrained ? "[green]Yes[/]" : "[yellow]No[/]")}");
+        AnsiConsole.MarkupLine($"  Run Active:  {(runActive ? "[blue]Yes[/]" : "No")}");
+    }
+
     private async Task ProcessBatchAsync()
     {
-        var queueStatus = await _mcpClient.CallToolAsync("get_queue_status", new { });
+        var queueStatus = await _mcpClient.CallToolAsync("get_unattended_queue_status", new { });
         var pendingCount = queueStatus.TryGetProperty("pending", out var p) && p.TryGetInt32(out var n) ? n : 0;
         if (!ConfirmLlmCost("all pending PD(s) (parallel batch)", pendingCount))
             return;
@@ -554,7 +530,7 @@ class PositionAnalysisChatClient
 
     private async Task ProcessAllAsync()
     {
-        var queueStatus = await _mcpClient.CallToolAsync("get_queue_status", new { });
+        var queueStatus = await _mcpClient.CallToolAsync("get_unattended_queue_status", new { });
         var pendingCount = queueStatus.TryGetProperty("pending", out var p) && p.TryGetInt32(out var n) ? n : 0;
         if (!ConfirmLlmCost("unscored PD(s) across all staged series", pendingCount))
             return;
@@ -611,27 +587,6 @@ class PositionAnalysisChatClient
         return SumStatusFields(result, fields);
     }
 
-    private async Task<int> GetNeedsRescoreCountAsync(IReadOnlyList<string>? series = null, IReadOnlyList<string>? pdNumbers = null)
-    {
-        var result = await _mcpClient.CallToolAsync("get_needs_rescore_count", new { series, pdNumbers });
-        return result.TryGetProperty("count", out var count) && count.TryGetInt32(out var n) ? n : 0;
-    }
-
-    private async Task ShowNeedsRescoreCountAsync(IReadOnlyList<string> series, IReadOnlyList<string> pdNumbers)
-    {
-        var count = await GetNeedsRescoreCountAsync(
-            series.Count > 0 ? series : null,
-            pdNumbers.Count > 0 ? pdNumbers : null);
-
-        var scope = pdNumbers.Count > 0
-            ? $"among {string.Join(", ", pdNumbers)}"
-            : series.Count > 0
-                ? $"in series {string.Join(", ", series)}"
-                : "across all series";
-
-        AnsiConsole.MarkupLine($"[bold]{count}[/] PD(s) flagged needs_rescore = 'Y' {Markup.Escape(scope)}.");
-    }
-
     private static int SumStatusFields(JsonElement result, params string[] fields)
     {
         if (!result.TryGetProperty("series", out var seriesArray) || seriesArray.ValueKind != JsonValueKind.Array)
@@ -656,7 +611,7 @@ class PositionAnalysisChatClient
         if (!ConfirmAction("permanently delete ALL records from", $"[bold]{totalCount}[/] row(s) in SCHEDULE_PC_EVAL", totalCount))
             return;
 
-        var result = await _mcpClient.CallToolAsync("clear_schedule_pc_eval", new { });
+        var result = await _mcpClient.CallToolAsync("stage_pds_clear", new { });
         var deleted = result.TryGetProperty("deletedCount", out var d) && d.TryGetInt32(out var count) ? count : 0;
         AnsiConsole.MarkupLine($"[green]SCHEDULE_PC_EVAL cleared.[/] Deleted rows: [bold]{deleted}[/]");
     }
@@ -676,6 +631,62 @@ class PositionAnalysisChatClient
         }
 
         await ShowToolsForProviderAsync(_oracleToolNamesProvider, "Oracle SQLcl MCP Tools");
+    }
+
+    private async Task ShowSchemaInformationAsync()
+    {
+        if (_oracleMcpClient is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]Oracle SQLcl MCP client is not available.[/]");
+            return;
+        }
+
+        // Discover available tools to resolve the correct names at runtime
+        var tools = await _oracleMcpClient.ListToolsAsync();
+        var toolNames = tools.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var connectTool   = toolNames.FirstOrDefault(n => n.Contains("connect",    StringComparison.OrdinalIgnoreCase) && !n.Contains("disconnect", StringComparison.OrdinalIgnoreCase));
+        var runSqlTool    = toolNames.FirstOrDefault(n => n.Contains("sql",        StringComparison.OrdinalIgnoreCase) || n.Contains("query", StringComparison.OrdinalIgnoreCase) || n.Contains("run", StringComparison.OrdinalIgnoreCase));
+        var disconnectTool = toolNames.FirstOrDefault(n => n.Contains("disconnect", StringComparison.OrdinalIgnoreCase));
+
+        if (connectTool is null || runSqlTool is null)
+        {
+            AnsiConsole.MarkupLine("[yellow]Could not identify connect/query tools in Oracle MCP. Available tools:[/]");
+            foreach (var name in toolNames)
+                AnsiConsole.MarkupLine($"  [grey]{Markup.Escape(name)}[/]");
+            return;
+        }
+
+        try
+        {
+            await _oracleMcpClient.CallToolAsync(connectTool,
+                new Dictionary<string, object?> { ["connectionName"] = _oracleConnectionName });
+
+            var result = await _oracleMcpClient.CallToolAsync(runSqlTool,
+                new Dictionary<string, object?>
+                {
+                    ["sql"] = "SELECT object_name, object_type FROM user_objects WHERE object_type IN ('TABLE', 'VIEW') ORDER BY object_type, object_name"
+                });
+
+            if (disconnectTool is not null)
+                await _oracleMcpClient.CallToolAsync(disconnectTool, null);
+
+            var text = string.Join("", result.Content
+                .ToAIContents(null!)
+                .OfType<TextContent>()
+                .Select(c => c.Text ?? ""));
+
+            AnsiConsole.MarkupLine("[bold green]Schema — Tables & Views:[/]");
+            if (string.IsNullOrWhiteSpace(text))
+                AnsiConsole.MarkupLine("[grey](No results returned)[/]");
+            else
+                AnsiConsole.WriteLine(text);
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]Schema query failed:[/] {Markup.Escape(ex.Message)}");
+            AnsiConsole.MarkupLine($"[grey]Tools used — connect: [bold]{Markup.Escape(connectTool)}[/]  sql: [bold]{Markup.Escape(runSqlTool)}[/]  disconnect: [bold]{Markup.Escape(disconnectTool ?? "(none)")}[/][/]");
+        }
     }
 
     private static async Task ShowToolsForClientAsync(StdioMcpClient client, string title)
@@ -822,6 +833,12 @@ class PositionAnalysisChatClient
             return true;
         }
 
+        if (IsSchemaInformationPrompt(normalized))
+        {
+            await ShowSchemaInformationAsync();
+            return true;
+        }
+
         if (IsClearTablePrompt(normalized))
         {
             await ClearSchedulePcEvalAsync();
@@ -840,14 +857,6 @@ class PositionAnalysisChatClient
             else
                 await ShowStatusAsync();
 
-            return true;
-        }
-
-        if (IsNeedsRescoreCountPrompt(normalized))
-        {
-            var pdNumbers = ExtractPdNumbers(userInput);
-            var series = ExtractSeriesCodes(userInput);
-            await ShowNeedsRescoreCountAsync(series, pdNumbers);
             return true;
         }
 
@@ -893,20 +902,9 @@ class PositionAnalysisChatClient
             return true;
         }
 
-        if (IsRescoreFlaggedPrompt(normalized))
+        if (IsQueueStatusPrompt(normalized))
         {
-            var pdNumbers = ExtractPdNumbers(userInput);
-            var series = ExtractSeriesCodes(userInput);
-            var explicitByPd = normalized.Contains("by_pd") || normalized.Contains("by pd");
-            var explicitBySeries = normalized.Contains("by_series") || normalized.Contains("by series");
-
-            if (explicitByPd || (!explicitBySeries && pdNumbers.Count > 0))
-                await RescoreFlaggedByPdAsync(pdNumbers);
-            else if (explicitBySeries || series.Count > 0)
-                await RescoreFlaggedBySeriesAsync(series);
-            else
-                await RescoreFlaggedAsync();
-
+            await ShowQueueStatusAsync();
             return true;
         }
 
@@ -921,7 +919,7 @@ class PositionAnalysisChatClient
             var pdNbr = ExtractPdNbr(userInput);
             if (string.IsNullOrWhiteSpace(pdNbr))
             {
-                AnsiConsole.MarkupLine("[yellow]Please include a PD number.[/] Example: [bold]rescore_pd 200028[/]");
+                AnsiConsole.MarkupLine("[yellow]Please include a PD number.[/] Example: [bold]rescore_by_pds 200028[/]");
                 return true;
             }
 
@@ -998,20 +996,20 @@ class PositionAnalysisChatClient
     }
 
 
+    private static bool IsSchemaInformationPrompt(string normalized) =>
+        normalized.Contains("schema_information") ||
+        normalized.Contains("schema information") ||
+        normalized.Contains("show tables") ||
+        normalized.Contains("list tables") ||
+        normalized.Contains("show schema") ||
+        normalized.Contains("list schema");
+
     private static bool IsProcessingStatusPrompt(string normalized) =>
         normalized.Contains("processing status") ||
         normalized.Contains("status report") ||
         normalized.Contains("get_processing_status") ||
         normalized is "status" ||
         normalized.Contains("show status");
-
-    private static bool IsNeedsRescoreCountPrompt(string normalized) =>
-        normalized.Contains("get_needs_rescore_count") ||
-        normalized.Contains("needs_rescore_count") ||
-        normalized.Contains("needs rescore count") ||
-        normalized.Contains("how many need rescore") ||
-        normalized.Contains("how many pds need rescore") ||
-        normalized.Contains("needs rescore");
 
     private static bool IsStagePrompt(string normalized) =>
         normalized.StartsWith("stage") ||
@@ -1020,6 +1018,7 @@ class PositionAnalysisChatClient
         normalized.Contains("load for staging");
 
     private static bool IsClearTablePrompt(string normalized) =>
+        normalized.Contains("stage_pds_clear") ||
         normalized.Contains("clear_schedule_pc_eval") ||
         normalized.Contains("clear schedule_pc_eval") ||
         normalized.Contains("clear schedule pc eval") ||
@@ -1212,6 +1211,12 @@ class PositionAnalysisChatClient
         return normalized is "who are you" or "who r u" or "whoami" or "who am i";
     }
 
+    private static bool IsQueueStatusPrompt(string normalized) =>
+        normalized.Contains("get_unattended_queue_status") ||
+        normalized.Contains("queue status") ||
+        normalized.Contains("get queue") ||
+        normalized.Contains("show queue");
+
     private static bool IsRetryFailedPrompt(string normalized) =>
         normalized.Contains("reset_failed_to_staged") ||
         normalized.Contains("retry_failed_pds") ||
@@ -1241,22 +1246,19 @@ class PositionAnalysisChatClient
         normalized.Contains("process all") ||
         normalized.Contains("score all");
 
-    private static bool IsRescoreFlaggedPrompt(string normalized) =>
-        normalized.Contains("rescore_flagged_pds") ||
-        normalized.Contains("rescore flagged") ||
-        normalized.Contains("re-score flagged") ||
-        normalized.Contains("rescore needs_rescore");
-
     private static bool IsRescoreBySeriesPrompt(string normalized) =>
+        normalized.Contains("rescore_by_series") ||
         normalized.Contains("rescore_pds_by_series") ||
         normalized.Contains("rescore series") ||
         normalized.Contains("rescore by series") ||
         normalized.Contains("re-score series");
 
     private static bool IsRescorePdPrompt(string normalized) =>
+        normalized.StartsWith("rescore_by_pds") ||
         normalized.StartsWith("rescore_pd") ||
         normalized.StartsWith("rescore pd") ||
         normalized.Contains("rescore pd") ||
+        normalized.Contains("rescore_by_pds") ||
         normalized.Contains("rescore_pd") ||
         normalized.Contains("force score") ||
         normalized.Contains("re-score pd");
@@ -1553,7 +1555,7 @@ public sealed class ProcessAllRunner
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var response = await _mcpClient.CallToolAsync("get_queue_status", new { });
+                var response = await _mcpClient.CallToolAsync("get_unattended_queue_status", new { });
                 var status = ParseQueueStatus(response);
 
                 _logger.Information(
@@ -1595,7 +1597,7 @@ public sealed class ProcessAllRunner
         var isDrained = GetRequiredBoolean(response, "isDrained");
         var calculatedDrained = pending == 0 && inProgress == 0;
         if (isDrained != calculatedDrained)
-            throw new InvalidOperationException("get_queue_status response has an isDrained field inconsistent with pending and inProgress.");
+            throw new InvalidOperationException("get_unattended_queue_status response has an isDrained field inconsistent with pending and inProgress.");
 
         return new QueueStatusResponse(
             pending,
@@ -1610,7 +1612,7 @@ public sealed class ProcessAllRunner
     private static int GetRequiredInt32(JsonElement response, string propertyName)
     {
         if (!response.TryGetProperty(propertyName, out var property) || !property.TryGetInt32(out var value))
-            throw new InvalidOperationException($"get_queue_status response is missing a valid integer '{propertyName}' field.");
+            throw new InvalidOperationException($"get_unattended_queue_status response is missing a valid integer '{propertyName}' field.");
 
         return value;
     }
@@ -1618,7 +1620,7 @@ public sealed class ProcessAllRunner
     private static bool GetRequiredBoolean(JsonElement response, string propertyName)
     {
         if (!response.TryGetProperty(propertyName, out var property) || property.ValueKind is not JsonValueKind.True and not JsonValueKind.False)
-            throw new InvalidOperationException($"get_queue_status response is missing a valid boolean '{propertyName}' field.");
+            throw new InvalidOperationException($"get_unattended_queue_status response is missing a valid boolean '{propertyName}' field.");
 
         return property.GetBoolean();
     }
@@ -1626,7 +1628,7 @@ public sealed class ProcessAllRunner
     private static string? GetRequiredNullableString(JsonElement response, string propertyName)
     {
         if (!response.TryGetProperty(propertyName, out var property) || property.ValueKind is not JsonValueKind.String and not JsonValueKind.Null)
-            throw new InvalidOperationException($"get_queue_status response is missing a valid string or null '{propertyName}' field.");
+            throw new InvalidOperationException($"get_unattended_queue_status response is missing a valid string or null '{propertyName}' field.");
 
         return property.ValueKind == JsonValueKind.Null ? null : property.GetString();
     }

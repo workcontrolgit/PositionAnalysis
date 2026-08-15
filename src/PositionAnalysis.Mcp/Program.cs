@@ -142,14 +142,10 @@ public class Program
                 // MCP Tool Handlers
                 services.AddScoped<IMcpToolHandler, StagePdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ResetFailedToStagedToolHandler>();
-                services.AddScoped<IMcpToolHandler, RescorePdToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescoreByPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescorePdsBySeriesToolHandler>();
-                services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsToolHandler>();
-                services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsBySeriesToolHandler>();
-                services.AddScoped<IMcpToolHandler, RescoreFlaggedPdsByPdToolHandler>();
-                services.AddScoped<IMcpToolHandler, GetNeedsRescoreCountToolHandler>();
                 services.AddScoped<IMcpToolHandler, RebucketRatingsToolHandler>();
-                services.AddScoped<IMcpToolHandler, ClearSchedulePcEvalToolHandler>();
+                services.AddScoped<IMcpToolHandler, StagePdsClearToolHandler>();
                 services.AddScoped<IMcpToolHandler, RunUnattendedScoringToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessBatchToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessBatchBySeriesToolHandler>();
@@ -158,7 +154,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusByOrgsToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusByPdToolHandler>();
-                services.AddScoped<IMcpToolHandler, GetQueueStatusToolHandler>();
+                services.AddScoped<IMcpToolHandler, RunUnattendedQueueStatusToolHandler>();
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsToolHandler>();
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsByOrgsToolHandler>();

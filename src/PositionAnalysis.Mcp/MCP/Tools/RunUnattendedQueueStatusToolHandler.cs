@@ -1,15 +1,14 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using PositionAnalysis.Mcp.Infrastructure.Repositories;
-using PositionAnalysis.Mcp.MCP;
 
 namespace PositionAnalysis.Mcp.MCP.Tools;
 
-public class GetQueueStatusToolHandler : IMcpToolHandler
+public class RunUnattendedQueueStatusToolHandler : IMcpToolHandler
 {
     private readonly IPositionAnalysisEvalRepository _evaluationRepository;
     private readonly ProcessAllRunStatusService _runStatusService;
 
-    public GetQueueStatusToolHandler(
+    public RunUnattendedQueueStatusToolHandler(
         IPositionAnalysisEvalRepository evaluationRepository,
         ProcessAllRunStatusService runStatusService)
     {
@@ -17,7 +16,7 @@ public class GetQueueStatusToolHandler : IMcpToolHandler
         _runStatusService = runStatusService;
     }
 
-    public string Name => "get_queue_status";
+    public string Name => "get_unattended_queue_status";
 
     public string Description => "Get aggregate Schedule PC worker queue status";
 

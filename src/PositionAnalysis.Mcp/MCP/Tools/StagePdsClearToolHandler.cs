@@ -1,18 +1,18 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using PositionAnalysis.Mcp.Infrastructure.Repositories;
 
 namespace PositionAnalysis.Mcp.MCP.Tools;
 
-public class ClearSchedulePcEvalToolHandler : IMcpToolHandler
+public class StagePdsClearToolHandler : IMcpToolHandler
 {
     private readonly IPositionAnalysisEvalRepository _evalRepository;
 
-    public ClearSchedulePcEvalToolHandler(IPositionAnalysisEvalRepository evalRepository)
+    public StagePdsClearToolHandler(IPositionAnalysisEvalRepository evalRepository)
     {
         _evalRepository = evalRepository;
     }
 
-    public string Name => "clear_schedule_pc_eval";
+    public string Name => "stage_pds_clear";
 
     public string Description => "Delete all records from SCHEDULE_PC_EVAL";
 

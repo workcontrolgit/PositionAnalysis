@@ -15,7 +15,7 @@ public class RescorePdsBySeriesToolHandler : IMcpToolHandler
         _scoringOrchestrator = scoringOrchestrator;
     }
 
-    public string Name => "rescore_pds_by_series";
+    public string Name => "rescore_by_series";
 
     public string Description => "Force a fresh LLM rescore of all PDs in the specified occupational series, overwriting existing results regardless of status";
 

@@ -45,21 +45,6 @@ public interface IScoringOrchestrator
     Task RescoreBySeriesAsync(IEnumerable<string> series);
 
     /// <summary>
-    /// Forces a fresh rescore of every PD flagged needs_rescore = 'Y'
-    /// </summary>
-    Task RescoreFlaggedAsync();
-
-    /// <summary>
-    /// Forces a fresh rescore of PDs flagged needs_rescore = 'Y' within the specified series
-    /// </summary>
-    Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series);
-
-    /// <summary>
-    /// Forces a fresh rescore of the specified PDs, but only those flagged needs_rescore = 'Y'
-    /// </summary>
-    Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers);
-
-    /// <summary>
     /// Re-derives the rating (HIGH/MEDIUM/LOW) for already-scored PDs from their stored
     /// triggered-criteria count using the current rating thresholds, without calling the LLM.
     /// Optionally filtered by series or PD numbers; scores all completed PDs when both are empty.

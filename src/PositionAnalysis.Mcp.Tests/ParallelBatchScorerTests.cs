@@ -226,9 +226,6 @@ public class ParallelBatchScorerTests
 
         public Task ScoreAllAsync() => Task.CompletedTask;
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
-        public Task RescoreFlaggedAsync() => Task.CompletedTask;
-        public Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
-        public Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers) => Task.CompletedTask;
         public Task<int> RebucketRatingsAsync(IEnumerable<string>? series = null, IEnumerable<string>? pdNumbers = null) => Task.FromResult(0);
         public Task<EvaluationResult?> GetResultAsync(string pdNbr) => Task.FromResult<EvaluationResult?>(null);
     }

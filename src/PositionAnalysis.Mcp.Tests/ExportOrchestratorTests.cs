@@ -98,9 +98,6 @@ public class ExportOrchestratorTests
         public Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series) => throw new NotSupportedException();
         public Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status) =>
             Task.FromResult(status == EvaluationStatus.Complete ? new List<EvaluationResult> { result } : new List<EvaluationResult>());
-        public Task<List<EvaluationResult>> GetNeedsRescoreAsync() => throw new NotSupportedException();
-        public Task<List<EvaluationResult>> GetNeedsRescoreBySeriesAsync(IEnumerable<string> series) => throw new NotSupportedException();
-        public Task<List<EvaluationResult>> GetNeedsRescoreByPdNumbersAsync(IEnumerable<string> pdNumbers) => throw new NotSupportedException();
         public Task<int> GetCountByStatusAsync(EvaluationStatus status) => throw new NotSupportedException();
         public Task<int> ResetFailedAsync() => throw new NotSupportedException();
         public Task UpdateRatingAsync(string pdNbr, OccupationalSeries series, string rating, bool isCandidate) => throw new NotSupportedException();

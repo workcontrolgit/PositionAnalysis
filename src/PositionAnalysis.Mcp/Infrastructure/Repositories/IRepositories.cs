@@ -33,9 +33,6 @@ public interface IPositionAnalysisEvalRepository
     Task<List<EvaluationResult>> GetAllAsync();
     Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series);
     Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status);
-    Task<List<EvaluationResult>> GetNeedsRescoreAsync();
-    Task<List<EvaluationResult>> GetNeedsRescoreBySeriesAsync(IEnumerable<string> series);
-    Task<List<EvaluationResult>> GetNeedsRescoreByPdNumbersAsync(IEnumerable<string> pdNumbers);
     Task<int> GetCountByStatusAsync(EvaluationStatus status);
     Task<int> ResetFailedAsync();
     Task UpdateRatingAsync(string pdNbr, OccupationalSeries series, string rating, bool isCandidate);
