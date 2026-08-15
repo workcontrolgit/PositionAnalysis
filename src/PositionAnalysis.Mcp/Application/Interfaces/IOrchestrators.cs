@@ -45,11 +45,6 @@ public interface IScoringOrchestrator
     Task RescoreBySeriesAsync(IEnumerable<string> series);
 
     /// <summary>
-    /// Forces a fresh rescore of every staged PD across all series, regardless of current status
-    /// </summary>
-    Task RescoreAllAsync();
-
-    /// <summary>
     /// Forces a fresh rescore of every PD flagged needs_rescore = 'Y'
     /// </summary>
     Task RescoreFlaggedAsync();

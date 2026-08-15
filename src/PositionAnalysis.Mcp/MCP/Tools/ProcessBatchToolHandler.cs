@@ -7,7 +7,7 @@ namespace PositionAnalysis.Mcp.MCP.Tools;
 
 /// <summary>
 /// MCP tool: score ALL pending PDs globally in parallel with progress.
-/// Tool name: process_batch
+/// Tool name: process_batch_all
 ///
 /// Fetches every row with Rating = 'PENDING' from SCHEDULE_PC_EVAL,
 /// then runs the 10-way parallel scoring loop with live progress notifications.
@@ -30,7 +30,7 @@ public sealed class ProcessBatchToolHandler : IMcpStreamingToolHandler
         _logger = logger;
     }
 
-    public string Name => "process_batch";
+    public string Name => "process_batch_all";
 
     public string Description =>
         "Score ALL pending PDs globally in parallel (10-way concurrency) with live progress notifications. " +
@@ -63,7 +63,7 @@ public sealed class ProcessBatchToolHandler : IMcpStreamingToolHandler
                 .ToList();
         }
 
-        _logger.LogInformation("process_batch: {Count} pending PDs found globally", pendingPdNbrs.Count);
+        _logger.LogInformation("process_batch_all: {Count} pending PDs found globally", pendingPdNbrs.Count);
 
         if (pendingPdNbrs.Count == 0)
             return new { total = 0, completed = 0, failed = 0, message = "No pending PDs found." };

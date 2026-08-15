@@ -155,21 +155,6 @@ Be objective and ground every finding in specific language from the duties text.
         _logger.LogInformation("Force rescore completed: {Scored} scored, {Failed} failed", totalScored, totalFailed);
     }
 
-    public async Task RescoreAllAsync()
-    {
-        var counts = await _evalRepository.GetSeriesCountsAsync();
-        var allSeries = counts.Select(c => c.Series).ToList();
-
-        if (allSeries.Count == 0)
-        {
-            _logger.LogWarning("RescoreAllAsync: no staged series found");
-            return;
-        }
-
-        _logger.LogInformation("RescoreAllAsync: force rescoring all {Count} staged series", allSeries.Count);
-        await RescoreBySeriesAsync(allSeries);
-    }
-
     public async Task RescoreFlaggedAsync()
     {
         var flagged = await _evalRepository.GetNeedsRescoreAsync();
@@ -540,8 +525,11 @@ positionPurpose must be descriptive, not evaluative, and should synthesize both 
                     {
                         foreach (var dutyNumEl in dutyNumsEl.EnumerateArray())
                         {
-                            if (dutyNumEl.TryGetInt32(out var dutyNum))
+                            // Some local models (e.g. Ollama) emit duty numbers as JSON strings instead of numbers.
+                            if (dutyNumEl.ValueKind == JsonValueKind.Number && dutyNumEl.TryGetInt32(out var dutyNum))
                                 cs.SupportingDutyNumbers.Add(dutyNum);
+                            else if (dutyNumEl.ValueKind == JsonValueKind.String && int.TryParse(dutyNumEl.GetString(), out var dutyNumFromString))
+                                cs.SupportingDutyNumbers.Add(dutyNumFromString);
                         }
                     }
 

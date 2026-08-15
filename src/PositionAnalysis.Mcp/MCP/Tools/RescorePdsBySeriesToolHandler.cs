@@ -56,7 +56,7 @@ public class RescorePdsBySeriesToolHandler : IMcpToolHandler
         return new
         {
             series,
-            status = $"Rescore complete for series: {string.Join(", ", series)}. Run generate_documents to regenerate Word forms."
+            status = $"Rescore complete for series: {string.Join(", ", series)}. Run generate_documents_all to regenerate Word forms."
         };
     }
 }

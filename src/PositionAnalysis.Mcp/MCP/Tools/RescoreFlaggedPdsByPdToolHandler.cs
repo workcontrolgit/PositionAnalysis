@@ -45,7 +45,7 @@ public class RescoreFlaggedPdsByPdToolHandler : IMcpToolHandler
         return new
         {
             pdNumbers,
-            status = $"Rescore complete for needs_rescore-flagged PD(s): {string.Join(", ", pdNumbers)}. Run generate_documents to regenerate Word forms."
+            status = $"Rescore complete for needs_rescore-flagged PD(s): {string.Join(", ", pdNumbers)}. Run generate_documents_all to regenerate Word forms."
         };
     }
 }

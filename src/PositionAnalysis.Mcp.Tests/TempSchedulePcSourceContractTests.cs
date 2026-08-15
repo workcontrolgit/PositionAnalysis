@@ -44,18 +44,17 @@ public class TempSchedulePcSourceContractTests
     }
 
     [Fact]
-    public void BulkStagingProcedureUsesFilteredTempHeadersAndReportsDutylessExclusions()
+    public void BulkStagingUsesFilteredTempHeadersAndReportsDutylessExclusions()
     {
-        var procedurePath = FindBulkStagingProcedureFile();
-        var source = File.ReadAllText(procedurePath);
+        var source = File.ReadAllText(FindEvalRepositorySourceFile());
 
         Assert.Contains("FROM temp_pd_sched_pc pd", source, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("EXISTS (SELECT 1 FROM temp_pd_sched_pc_duties duty", source, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("duty.pd_seq_num = pd.pd_seq_num", source, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("duty.pdd_major_duties_text IS NOT NULL", source, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("p_excluded_count OUT PLS_INTEGER", source, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("NOT EXISTS (SELECT 1 FROM temp_pd_sched_pc_duties duty", source, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("NOT {dutyExistsPredicate}", source, StringComparison.Ordinal);
         Assert.DoesNotContain("FROM max_pd_vw", source, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("stage_schedule_pc_eval", source, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindRepositorySourceFile()
@@ -92,7 +91,7 @@ public class TempSchedulePcSourceContractTests
         return null;
     }
 
-    private static string FindBulkStagingProcedureFile()
+    private static string FindEvalRepositorySourceFile()
     {
         foreach (var root in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
@@ -103,8 +102,9 @@ public class TempSchedulePcSourceContractTests
                 var candidate = Path.Combine(
                     directory.FullName,
                     "PositionAnalysis.Mcp",
-                    "Database",
-                    "STAGE_SCHEDULE_PC_EVAL.sql");
+                    "Infrastructure",
+                    "Repositories",
+                    "OracleSchedulePCEvalRepository.cs");
 
                 if (File.Exists(candidate))
                     return candidate;
@@ -113,7 +113,7 @@ public class TempSchedulePcSourceContractTests
             }
         }
 
-        throw new FileNotFoundException("Could not find STAGE_SCHEDULE_PC_EVAL.sql.");
+        throw new FileNotFoundException("Could not find OracleSchedulePCEvalRepository.cs.");
     }
 }
 

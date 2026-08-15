@@ -37,7 +37,6 @@ public class ProcessAllRunStatusServiceTests
         public Task ScoreAsync(string pdNbr) => Task.CompletedTask;
         public Task ScoreAllAsync() => Task.CompletedTask;
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
-        public Task RescoreAllAsync() => Task.CompletedTask;
         public Task RescoreFlaggedAsync() => Task.CompletedTask;
         public Task RescoreFlaggedBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task RescoreFlaggedByPdAsync(IEnumerable<string> pdNumbers) => Task.CompletedTask;
