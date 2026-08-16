@@ -316,23 +316,34 @@ public sealed class AgenticChatSession
 
         if (winner == escTcs.Task && await escTcs.Task)
         {
-            // User pressed Esc — suppress progress and cancel the server-side batch
-            if (onEscAsync is not null) _ = onEscAsync();
             Console.Error.WriteLine(); // end the \r progress line
-            AnsiConsole.MarkupLine("[yellow]  Cancellation requested…[/]");
+            AnsiConsole.MarkupLine("[yellow]  Cancellation requested… please wait.[/]");
+
+            // Step 1: send cancel_current_batch and await confirmation that the server
+            // received the signal before doing anything else.
+            if (onEscAsync is not null)
+            {
+                try { await onEscAsync(); }
+                catch { /* ignore — best effort */ }
+            }
+
+            // Step 2: cancel the client-side task too.
             await toolCts.CancelAsync();
 
-            // Give the MCP SDK up to 5 seconds to acknowledge the cancellation.
-            // If the server is mid-batch it may not respond immediately; we abandon after the timeout.
-            if (await Task.WhenAny(toolTask, Task.Delay(5000, CancellationToken.None)) != toolTask)
+            // Step 3: wait for the batch task to finish (server is stopping in-flight records).
+            // Timeout of 30 s covers up to ~10 concurrent LLM calls finishing naturally.
+            AnsiConsole.MarkupLine("[grey]  Waiting for in-flight records to finish…[/]");
+            if (await Task.WhenAny(toolTask, Task.Delay(30_000, CancellationToken.None)) != toolTask)
             {
-                // Suppress the unobserved-task-exception the abandoned task will eventually raise
+                // Still running after 30 s — abandon the task.
                 _ = toolTask.ContinueWith(_ => { }, CancellationToken.None,
                     TaskContinuationOptions.None, TaskScheduler.Default);
-                AnsiConsole.MarkupLine("[yellow]  Cancelled. The server will finish its current record, then stop.[/]");
-                AnsiConsole.MarkupLine("[yellow]  CLI is ready for your next command.[/]");
-                return "{\"cancelled\":true,\"message\":\"Batch cancelled by user (Esc). Server finishes its current record.\"}";
+                AnsiConsole.MarkupLine("[yellow]  Cancelled.[/]");
+                return "{\"cancelled\":true,\"message\":\"Batch cancelled by user (Esc).\"}";
             }
+
+            AnsiConsole.MarkupLine("[yellow]  Cancelled.[/]");
+            return "{\"cancelled\":true,\"message\":\"Batch cancelled by user (Esc).\"}";
         }
 
         Console.Error.WriteLine(); // ensure progress line is terminated
