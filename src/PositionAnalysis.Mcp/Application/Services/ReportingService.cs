@@ -87,8 +87,21 @@ public class ReportingService : IReportingService
                 continue;
             }
 
+            var pd = await _pdRepository.GetByPdNbrAsync(pdNbr);
             var status = ResolveStatus(result.Rating);
-            statuses.Add(new PdProcessingStatus(result.PdNbr, result.Series.Code, status.ToString(), result.Rating));
+            var criteriaMet = result.CriteriaScores.Count(s => s.Triggered);
+
+            statuses.Add(new PdProcessingStatus(
+                PdNbr:      result.PdNbr,
+                Series:     result.Series.Code,
+                Status:     status.ToString(),
+                Rating:     result.Rating,
+                Title:      pd?.Title ?? string.Empty,
+                OrgCode:    pd?.OrganizationCode ?? string.Empty,
+                PayPlan:    pd?.PayPlan ?? string.Empty,
+                Grade:      result.Grade?.Value.ToString("D2") ?? string.Empty,
+                CriteriaMet: criteriaMet,
+                Score:      result.OverallScore));
         }
 
         return statuses;

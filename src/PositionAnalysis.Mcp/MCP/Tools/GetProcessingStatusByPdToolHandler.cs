@@ -44,10 +44,16 @@ public class GetProcessingStatusByPdToolHandler : IMcpToolHandler
 
         var results = statuses.Select(s => new
         {
-            pdNbr = s.PdNbr,
-            series = s.Series,
-            status = s.Status,
-            rating = s.Rating
+            pdNbr      = s.PdNbr,
+            title      = s.Title,
+            orgCode    = s.OrgCode,
+            payPlan    = s.PayPlan,
+            series     = s.Series,
+            grade      = s.Grade,
+            status     = s.Status,
+            criteriaMet = s.CriteriaMet,
+            rating     = s.Rating,
+            score      = s.Score
         }).ToList();
 
         return new

@@ -126,6 +126,9 @@ public sealed class AgenticChatSession
 
                     // Intercept cost-gate confirmation before the LLM sees it
                     resultJson = await HandleCostGateAsync(call.Name, args, resultJson, cancellationToken);
+
+                    // Render status results as a table immediately in the CLI
+                    TryRenderStatusTable(call.Name, resultJson);
                 }
                 catch (Exception ex)
                 {
@@ -359,6 +362,122 @@ public sealed class AgenticChatSession
         {
             AnsiConsole.MarkupLine("[yellow]  Cancelled. CLI is ready.[/]");
             return "{\"cancelled\":true,\"message\":\"Operation cancelled.\"}";
+        }
+    }
+
+    private static void TryRenderStatusTable(string toolName, string resultJson)
+    {
+        if (!toolName.StartsWith("get_processing_status", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(resultJson); }
+        catch { return; }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+
+            // Series-level: { series: [{ series, staged, inProgress, complete, failed, percentComplete }] }
+            if (root.TryGetProperty("series", out var seriesArr) && seriesArr.ValueKind == JsonValueKind.Array)
+            {
+                var table = new Table()
+                    .Border(TableBorder.Rounded)
+                    .AddColumn("[grey]Series[/]")
+                    .AddColumn(new TableColumn("[grey]Staged[/]").RightAligned())
+                    .AddColumn(new TableColumn("[grey]In Progress[/]").RightAligned())
+                    .AddColumn(new TableColumn("[grey]Complete[/]").RightAligned())
+                    .AddColumn(new TableColumn("[grey]Failed[/]").RightAligned())
+                    .AddColumn(new TableColumn("[grey]% Done[/]").RightAligned());
+
+                foreach (var item in seriesArr.EnumerateArray())
+                {
+                    var series   = item.TryGetProperty("series",          out var s)  ? s.GetString() ?? ""  : "";
+                    var staged   = item.TryGetProperty("staged",          out var st) ? st.GetInt32()        : 0;
+                    var inProg   = item.TryGetProperty("inProgress",      out var ip) ? ip.GetInt32()        : 0;
+                    var complete = item.TryGetProperty("complete",        out var c)  ? c.GetInt32()         : 0;
+                    var failed   = item.TryGetProperty("failed",          out var f)  ? f.GetInt32()         : 0;
+                    var pct      = item.TryGetProperty("percentComplete", out var p)  ? p.GetDouble()        : 0.0;
+
+                    var pctColor    = pct >= 100 ? "green" : pct > 0 ? "yellow" : "grey";
+                    var failedText  = failed > 0 ? $"[red]{failed}[/]" : "0";
+                    var inProgText  = inProg > 0 ? $"[yellow]{inProg}[/]" : "0";
+
+                    table.AddRow(
+                        series,
+                        staged.ToString(),
+                        inProgText,
+                        complete.ToString(),
+                        failedText,
+                        $"[{pctColor}]{pct:F1}%[/]");
+                }
+
+                AnsiConsole.WriteLine();
+                AnsiConsole.Write(table);
+                return;
+            }
+
+            // PD-level: { results: [{ pdNbr, title, orgCode, payPlan, series, grade, status, criteriaMet, rating, score }] }
+            if (root.TryGetProperty("results", out var resultsArr) && resultsArr.ValueKind == JsonValueKind.Array)
+            {
+                var table = new Table()
+                    .Border(TableBorder.Rounded)
+                    .AddColumn("[grey]PD Number[/]")
+                    .AddColumn("[grey]Position Title[/]")
+                    .AddColumn("[grey]Org Code[/]")
+                    .AddColumn("[grey]Pay Plan[/]")
+                    .AddColumn("[grey]Series[/]")
+                    .AddColumn(new TableColumn("[grey]Grade[/]").RightAligned())
+                    .AddColumn("[grey]Status[/]")
+                    .AddColumn(new TableColumn("[grey]Criteria Met[/]").RightAligned())
+                    .AddColumn("[grey]Rating[/]")
+                    .AddColumn(new TableColumn("[grey]AI Score[/]").RightAligned());
+
+                foreach (var item in resultsArr.EnumerateArray())
+                {
+                    var pdNbr       = item.TryGetProperty("pdNbr",       out var p)   ? p.GetString()   ?? "" : "";
+                    var title       = item.TryGetProperty("title",       out var t)   ? t.GetString()   ?? "" : "";
+                    var orgCode     = item.TryGetProperty("orgCode",     out var o)   ? o.GetString()   ?? "" : "";
+                    var payPlan     = item.TryGetProperty("payPlan",     out var pp)  ? pp.GetString()  ?? "" : "";
+                    var series      = item.TryGetProperty("series",      out var s)   ? s.GetString()   ?? "" : "";
+                    var grade       = item.TryGetProperty("grade",       out var g)   ? g.GetString()   ?? "" : "";
+                    var status      = item.TryGetProperty("status",      out var st)  ? st.GetString()  ?? "" : "";
+                    var criteriaMet = item.TryGetProperty("criteriaMet", out var cm)  ? cm.GetInt32()        : 0;
+                    var rating      = item.TryGetProperty("rating",      out var r)   ? r.GetString()   ?? "" : "";
+                    var score       = item.TryGetProperty("score",       out var sc)  ? sc.GetDecimal()      : 0m;
+
+                    var statusColor = status.ToLowerInvariant() switch
+                    {
+                        "complete"               => "green",
+                        "inprogress" or "staged" => "yellow",
+                        "failed"                 => "red",
+                        _                        => "grey"
+                    };
+                    var ratingColor = rating.ToUpperInvariant() switch
+                    {
+                        "HIGH"   => "green",
+                        "MEDIUM" => "yellow",
+                        "LOW"    => "orange1",
+                        _        => "grey"
+                    };
+                    var scoreText = score > 0 ? $"{score:F1}" : "[grey]—[/]";
+
+                    table.AddRow(
+                        pdNbr,
+                        Markup.Escape(title),
+                        orgCode,
+                        payPlan,
+                        series,
+                        grade,
+                        $"[{statusColor}]{Markup.Escape(status)}[/]",
+                        criteriaMet > 0 ? criteriaMet.ToString() : "[grey]0[/]",
+                        string.IsNullOrEmpty(rating) ? "[grey]—[/]" : $"[{ratingColor}]{Markup.Escape(rating)}[/]",
+                        scoreText);
+                }
+
+                AnsiConsole.WriteLine();
+                AnsiConsole.Write(table);
+            }
         }
     }
 
