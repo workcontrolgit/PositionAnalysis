@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using PositionAnalysis.Cli;
 using Xunit;
 
@@ -23,7 +23,7 @@ public class ProcessAllRunnerTests
         var exitCode = await runner.RunAsync();
 
         Assert.Equal(0, exitCode);
-        Assert.Equal(new[] { "run_unattended_scoring", "get_queue_status", "get_queue_status" }, client.ToolCalls);
+        Assert.Equal(new[] { "run_unattended_scoring", "get_unattended_queue_status", "get_unattended_queue_status" }, client.ToolCalls);
         Assert.Single(delays);
         Assert.Equal(interval, delays[0]);
     }
@@ -51,7 +51,7 @@ public class ProcessAllRunnerTests
         var exitCode = await runner.RunAsync();
 
         Assert.Equal(1, exitCode);
-        Assert.Equal(new[] { "run_unattended_scoring", "get_queue_status" }, client.ToolCalls);
+        Assert.Equal(new[] { "run_unattended_scoring", "get_unattended_queue_status" }, client.ToolCalls);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class ProcessAllRunnerTests
         return document.RootElement.Clone();
     }
 
-    private sealed class FakeMcpClient : ISchedulePcMcpClient
+    private sealed class FakeMcpClient : IProcessAllMcpClient
     {
         private readonly Queue<JsonElement> _queueStatuses;
 
@@ -138,21 +138,17 @@ public class ProcessAllRunnerTests
 
         public List<string> ToolCalls { get; } = [];
 
-        public Task<JsonElement> CallToolAsync(string name, object arguments)
+        public Task<JsonElement> CallToolAsync(string name, CancellationToken cancellationToken = default)
         {
             ToolCalls.Add(name);
 
             return name switch
             {
                 "run_unattended_scoring" => Task.FromResult(EmptyResponse()),
-                "get_queue_status" when _queueStatuses.Count > 0 => Task.FromResult(_queueStatuses.Dequeue()),
+                "get_unattended_queue_status" when _queueStatuses.Count > 0 => Task.FromResult(_queueStatuses.Dequeue()),
                 _ => throw new InvalidOperationException($"Unexpected MCP tool call: {name}.")
             };
         }
-
-        // ProcessAllRunner never calls this overload; implemented only to satisfy the interface.
-        public Task<JsonElement> CallToolWithProgressAsync(string name, object arguments, Action<double, double> onProgress)
-            => CallToolAsync(name, arguments);
 
         private static JsonElement EmptyResponse()
         {

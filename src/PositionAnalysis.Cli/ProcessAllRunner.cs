@@ -1,28 +1,39 @@
 using System.Text.Json;
 using ModelContextProtocol.Client;
-using ModelContextProtocol.Protocol;
 using Serilog;
 
 namespace PositionAnalysis.Cli;
 
 public sealed class ProcessAllRunner
 {
-    private readonly McpClient _paClient;
+    private readonly IProcessAllMcpClient _paClient;
     private readonly TimeSpan _pollInterval;
     private readonly Func<TimeSpan, CancellationToken, Task> _delayAsync;
     private readonly ILogger _logger;
 
+    // Primary constructor used by Program.cs
+    public ProcessAllRunner(
+        McpClient paClient,
+        TimeSpan pollInterval,
+        Func<TimeSpan, CancellationToken, Task> delayAsync,
+        ILogger? logger = null)
+        : this(new McpClientAdapter(paClient), pollInterval, delayAsync, logger)
+    {
+    }
+
+    // Convenience overload with simpler delay signature
     public ProcessAllRunner(
         McpClient paClient,
         TimeSpan pollInterval,
         Func<TimeSpan, Task> delayAsync,
         ILogger? logger = null)
-        : this(paClient, pollInterval, (delay, _) => delayAsync(delay), logger)
+        : this(new McpClientAdapter(paClient), pollInterval, (delay, _) => delayAsync(delay), logger)
     {
     }
 
-    public ProcessAllRunner(
-        McpClient paClient,
+    // Testable constructor
+    internal ProcessAllRunner(
+        IProcessAllMcpClient paClient,
         TimeSpan pollInterval,
         Func<TimeSpan, CancellationToken, Task> delayAsync,
         ILogger? logger = null)
@@ -33,18 +44,28 @@ public sealed class ProcessAllRunner
         _logger = logger ?? Log.Logger;
     }
 
+    // Testable constructor — simple delay overload
+    internal ProcessAllRunner(
+        IProcessAllMcpClient paClient,
+        TimeSpan pollInterval,
+        Func<TimeSpan, Task> delayAsync,
+        ILogger? logger = null)
+        : this(paClient, pollInterval, (delay, _) => delayAsync(delay), logger)
+    {
+    }
+
     public async Task<int> RunAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             _logger.Information("Starting unattended Schedule PC scoring run");
             cancellationToken.ThrowIfCancellationRequested();
-            await CallAndParseAsync("run_unattended_scoring", null, cancellationToken);
+            await _paClient.CallToolAsync("run_unattended_scoring", cancellationToken);
 
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var response = await CallAndParseAsync("get_unattended_queue_status", null, cancellationToken);
+                var response = await _paClient.CallToolAsync("get_unattended_queue_status", cancellationToken);
                 var status = ParseQueueStatus(response);
 
                 _logger.Information(
@@ -77,19 +98,6 @@ public sealed class ProcessAllRunner
             _logger.Information("Schedule PC unattended scoring run was cancelled");
             return 2;
         }
-    }
-
-    private async Task<JsonElement> CallAndParseAsync(
-        string toolName,
-        IReadOnlyDictionary<string, object?>? args,
-        CancellationToken cancellationToken)
-    {
-        // Note: McpClient.CallToolAsync(string, IReadOnlyDictionary?, IProgress?, RequestOptions?) does not
-        // accept CancellationToken directly. Cancellation is guarded by ThrowIfCancellationRequested() in callers.
-        var result = await _paClient.CallToolAsync(toolName, args, progress: null);
-        var text = result.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text ?? "{}";
-        using var doc = JsonDocument.Parse(text);
-        return doc.RootElement.Clone();
     }
 
     private static QueueStatusResponse ParseQueueStatus(JsonElement response)

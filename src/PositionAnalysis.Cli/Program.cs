@@ -99,6 +99,10 @@ try
 
     await using var oracleClientDisposer = oracleClient;
 
+    using var interactiveCts = new CancellationTokenSource();
+    Console.CancelKeyPress += (_, e) => { e.Cancel = true; interactiveCts.Cancel(); };
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => interactiveCts.Cancel();
+
     // ── Progress notification handler (shared across both clients) ───────────────
     int lastPct = -1;
 
@@ -141,9 +145,7 @@ try
 
     var session = new AgenticChatSession(chatClient, registry, modelDisplay);
 
-    Console.CancelKeyPress += (_, e) => { e.Cancel = true; Environment.Exit(0); };
-
-    await session.RunAsync();
+    await session.RunAsync(interactiveCts.Token);
 }
 catch (Exception ex)
 {

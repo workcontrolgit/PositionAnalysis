@@ -36,6 +36,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>PositionAnalysis.Cli.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Referenced only to enforce build ordering; the AfterTargets below publishes Mcp into its
          own subfolder, so its content/assets must not flow into the Cli's own publish output. -->
     <ProjectReference Include="..\PositionAnalysis.Mcp\PositionAnalysis.Mcp.csproj"
