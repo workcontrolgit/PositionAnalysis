@@ -40,12 +40,14 @@ public class GenerateDocumentsByOrgsToolHandler : IMcpToolHandler
         if (orgCodes.Count == 0)
             return new { error = "Missing required parameter: orgCodes (array of bureau/org codes)" };
 
-        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateByOrgCodesAsync(orgCodes);
-
-        return new
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) && c.GetBoolean();
+        if (!confirmed)
         {
-            generated = succeeded,
-            failed
-        };
+            var count = await _documentGenerationOrchestrator.CountByOrgCodesAsync(orgCodes);
+            return new { requiresConfirmation = true, pendingCount = count, estimatedCostUsd = 0m };
+        }
+
+        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateByOrgCodesAsync(orgCodes);
+        return new { generated = succeeded, failed };
     }
 }

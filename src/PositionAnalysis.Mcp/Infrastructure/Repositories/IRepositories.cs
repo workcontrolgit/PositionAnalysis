@@ -34,6 +34,7 @@ public interface IPositionAnalysisEvalRepository
     Task<List<EvaluationResult>> GetBySeriesAsync(OccupationalSeries series);
     Task<List<EvaluationResult>> GetByStatusAsync(EvaluationStatus status);
     Task<int> GetCountByStatusAsync(EvaluationStatus status);
+    Task<int> CountNewToStageAsync(StagingFilter filter);
     Task<int> ResetFailedAsync();
     Task UpdateRatingAsync(string pdNbr, OccupationalSeries series, string rating, bool isCandidate);
     Task<int> RecoverExpiredClaimsAsync() => throw new NotSupportedException();

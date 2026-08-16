@@ -151,6 +151,39 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
         return deletedRows;
     }
 
+    public async Task<int> CountNewToStageAsync(StagingFilter filter)
+    {
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        var seriesValue = filter.Series?.ToString();
+        var orgCodeValue = filter.OrganizationCode;
+
+        const string sql = @"
+            SELECT COUNT(*) FROM temp_pd_sched_pc pd
+            WHERE CASE
+                      WHEN REGEXP_LIKE(TRIM(pd.grd_code), '^[[:digit:]]+$')
+                      THEN TO_NUMBER(TRIM(pd.grd_code))
+                  END BETWEEN 13 AND 15
+              AND (:series IS NULL OR pd.gvt_occ_series = :series)
+              AND (:orgCode IS NULL OR pd.pd_origin_org_code = :orgCode)
+              AND EXISTS (SELECT 1 FROM temp_pd_sched_pc_duties duty
+                  WHERE duty.pd_seq_num = pd.pd_seq_num
+                    AND duty.pdd_major_duties_text IS NOT NULL)
+              AND NOT EXISTS (SELECT 1 FROM schedule_pc_eval e
+                  WHERE e.pd_nbr = pd.pd_nbr)";
+
+        using var cmd = new OracleCommand(sql, connection)
+        {
+            CommandTimeout = _settings.CommandTimeout,
+            BindByName = true
+        };
+        cmd.Parameters.Add("series", OracleDbType.Varchar2, seriesValue, System.Data.ParameterDirection.Input);
+        cmd.Parameters.Add("orgCode", OracleDbType.Varchar2, orgCodeValue, System.Data.ParameterDirection.Input);
+
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync());
+    }
+
     public async Task<StagingResult> StageFromMaxPdAsync(StagingFilter filter)
     {
         _logger.LogInformation("Staging from Oracle TEMP source with filter: {Filter}", filter);
@@ -175,9 +208,14 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
                     AND duty.pdd_major_duties_text IS NOT NULL
             )";
 
+        const string notAlreadyStagedPredicate = @"
+            NOT EXISTS (SELECT 1 FROM schedule_pc_eval e
+                WHERE e.pd_nbr = pd.pd_nbr
+            )";
+
         int excludedWithoutDutiesCount;
         using (var countCmd = new OracleCommand(
-            $"SELECT COUNT(*) FROM temp_pd_sched_pc pd {eligibilityPredicate} AND NOT {dutyExistsPredicate}",
+            $"SELECT COUNT(*) FROM temp_pd_sched_pc pd {eligibilityPredicate} AND NOT {dutyExistsPredicate} AND {notAlreadyStagedPredicate}",
             connection)
         {
             CommandTimeout = _settings.CommandTimeout,
@@ -210,7 +248,7 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
                 NULL,
                 NULL
             FROM temp_pd_sched_pc pd
-            {eligibilityPredicate} AND {dutyExistsPredicate}",
+            {eligibilityPredicate} AND {dutyExistsPredicate} AND {notAlreadyStagedPredicate}",
             connection)
         {
             CommandTimeout = _settings.CommandTimeout,

@@ -17,8 +17,11 @@ public sealed class AgenticChatSession
         "Policy/Career authority. You have access to tools for staging, scoring, generating " +
         "evaluation documents, exporting results, and querying the Oracle database. " +
         "Call tools when the user requests workflow actions. " +
-        "Cost-gate confirmations are handled automatically by the CLI — you do not need to ask " +
-        "the user to confirm or re-call tools with confirmed:true.";
+        "Cost-gate confirmations are handled automatically by the CLI. " +
+        "NEVER pass confirmed:true yourself — always omit it or set it to false on your first call. " +
+        "The CLI will re-call the tool with confirmed:true after the user approves. " +
+        "When a tool result contains {\"displayed\":true}, the data was already rendered as a table " +
+        "in the terminal. Respond with one brief sentence only — do NOT re-list or summarize the data.";
 
     private readonly IChatClient _chatClient;
     private readonly McpToolRegistry _registry;
@@ -38,16 +41,22 @@ public sealed class AgenticChatSession
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
-        AnsiConsole.Write(new Rule("[bold cyan]Schedule PC Position Evaluation[/]")
+        AnsiConsole.Write(new Rule("[bold cyan]Position Analysis Tool[/]")
             .RuleStyle("cyan").LeftJustified());
-        AnsiConsole.MarkupLine("[grey]Authority: EO Implementing Schedule Policy/Career[/]");
+        AnsiConsole.MarkupLine("[grey]Purpose: EO Implementing Schedule Policy/Career[/]");
         AnsiConsole.MarkupLine($"[teal]Model:[/] [bold]{Markup.Escape(_modelName)}[/]");
-        AnsiConsole.MarkupLine($"[grey]Tools available:[/] [bold]{_registry.Tools.Count}[/]\n");
+        AnsiConsole.MarkupLine($"[grey]Tools available:[/] [bold]{_registry.Tools.Count}[/]");
 
         var options = new ChatOptions { Tools = [.. _registry.Tools] };
 
+        // Show menu once at startup
+        AnsiConsole.WriteLine();
+        RenderMenu();
+        AnsiConsole.MarkupLine("[grey]Type [bold]?[/] at any time to show this menu again.[/]");
+
         while (!cancellationToken.IsCancellationRequested)
         {
+            AnsiConsole.WriteLine();
             AnsiConsole.Markup("[bold cyan]You[/] [grey]▶[/] ");
             var input = Console.ReadLine();
 
@@ -58,13 +67,25 @@ public sealed class AgenticChatSession
             if (string.IsNullOrEmpty(trimmed))
                 continue;
 
-            if (trimmed is "exit" or "quit" or "bye")
+            if (trimmed is "exit" or "quit" or "bye" or "q" or "Q")
             {
                 AnsiConsole.MarkupLine("[grey]Goodbye.[/]");
                 break;
             }
 
-            _history.Add(new ChatMessage(ChatRole.User, trimmed));
+            // On-demand menu
+            if (trimmed is "?" or "menu" or "help")
+            {
+                RenderMenu();
+                continue;
+            }
+
+            // Resolve menu shortcut → natural-language prompt (may prompt for params)
+            var prompt = ResolveMenuShortcut(trimmed);
+            if (prompt == null)
+                continue; // invalid shortcut — re-prompt
+
+            _history.Add(new ChatMessage(ChatRole.User, prompt));
 
             try
             {
@@ -80,6 +101,150 @@ public sealed class AgenticChatSession
                 AnsiConsole.MarkupLine($"[red]Error:[/] {Markup.Escape(ex.Message)}");
             }
         }
+    }
+
+    private static void RenderMenu()
+    {
+        var grid = new Grid().AddColumns(3);
+
+        // Row 1: Status | Process | Generate Word Docs
+        grid.AddRow(
+            new Panel(
+                    "[bold] 1[/] All series\n" +
+                    "[bold] 2[/] By series\n" +
+                    "[bold] 3[/] By org code\n" +
+                    "[bold] 4[/] By PD number")
+                .Header("[bold yellow] Report Status [/]")
+                .BorderColor(Color.Yellow)
+                .Padding(1, 0),
+
+            new Panel(
+                    "[bold] 5[/] All pending\n" +
+                    "[bold] 6[/] By series\n" +
+                    "[bold] 7[/] By org code\n" +
+                    "[bold] 8[/] By PD number")
+                .Header("[bold green] Evaluate [/]")
+                .BorderColor(Color.Green)
+                .Padding(1, 0),
+
+            new Panel(
+                    "[bold] 9[/] All\n" +
+                    "[bold]10[/] By series\n" +
+                    "[bold]11[/] By org code\n" +
+                    "[bold]12[/] By PD number")
+                .Header("[bold cyan] Generate Word [/]")
+                .BorderColor(Color.Cyan1)
+                .Padding(1, 0));
+
+        // Row 2: Export to Excel | Manage | (hint)
+        grid.AddRow(
+            new Panel(
+                    "[bold]13[/] All\n" +
+                    "[bold]14[/] By series\n" +
+                    "[bold]15[/] By org code\n" +
+                    "[bold]16[/] By PD number")
+                .Header("[bold magenta] Export Excel [/]")
+                .BorderColor(Color.Magenta1)
+                .Padding(1, 0),
+
+            new Panel(
+                    "[bold]17[/] Stage PDs\n" +
+                    "[bold]18[/] Clear staged PDs\n" +
+                    "[bold]19[/] Reset failed → staged\n" +
+                    "[bold]20[/] Run unattended scoring\n" +
+                    "[bold]21[/] Unattended queue status\n" +
+                    "[bold]22[/] Re-score by PD number\n" +
+                    "[bold]23[/] Re-score by series")
+                .Header("[bold blue] Manage [/]")
+                .BorderColor(Color.Blue)
+                .Padding(1, 0),
+
+            new Panel(
+                    "[grey]Type a number or ask a\nquestion in plain English.\n\n[bold]?[/] — show menu\n[bold]Q[/] — quit[/]")
+                .Header("[grey] Help [/]")
+                .BorderColor(Color.Grey)
+                .Padding(1, 0));
+
+        AnsiConsole.Write(grid);
+    }
+
+    /// <summary>
+    /// Maps a menu shortcut number to a natural-language prompt for the LLM.
+    /// Prompts for required parameters (series, org code, PD numbers) inline.
+    /// Returns the free-text input unchanged if it is not a recognised shortcut.
+    /// Returns null if the user entered an invalid number.
+    /// </summary>
+    private static string? ResolveMenuShortcut(string input)
+    {
+        return input switch
+        {
+            // ── Status ───────────────────────────────────────────────────────────
+            "1" => "Show processing status for all occupational series.",
+            "2" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
+                       v => $"Show processing status for series {v}."),
+            "3" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
+                       v => $"Show processing status for org codes {v}."),
+            "4" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
+                       v => $"Show processing status for PD numbers {v}."),
+
+            // ── Process ───────────────────────────────────────────────────────────
+            "5" => "Process all pending PDs.",
+            "6" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
+                       v => $"Process batch for series {v}."),
+            "7" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
+                       v => $"Process batch for org codes {v}."),
+            "8" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
+                       v => $"Process batch for PD numbers {v}."),
+
+            // ── Generate Word Docs ────────────────────────────────────────────────
+            "9"  => "Generate Word evaluation documents for all evaluated PDs.",
+            "10" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
+                        v => $"Generate Word evaluation documents for series {v}."),
+            "11" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
+                        v => $"Generate Word evaluation documents for org codes {v}."),
+            "12" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
+                        v => $"Generate Word evaluation documents for PD numbers {v}."),
+
+            // ── Export to Excel ───────────────────────────────────────────────────
+            "13" => "Export all evaluation results to Excel.",
+            "14" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
+                        v => $"Export evaluation results to Excel for series {v}."),
+            "15" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
+                        v => $"Export evaluation results to Excel for org codes {v}."),
+            "16" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
+                        v => $"Export evaluation results to Excel for PD numbers {v}."),
+
+            // ── Manage ────────────────────────────────────────────────────────────
+            "17" => "Stage PDs for evaluation.",
+            "18" => "Clear all staged PDs.",
+            "19" => "Reset all failed evaluations back to staged for retry.",
+            "20" => "Run unattended scoring for all staged pending PDs.",
+            "21" => "Show unattended queue status.",
+            "22" => PromptParam("PD numbers to re-score (comma-separated, e.g. 201921,201881)",
+                        v => $"Re-score PD numbers {v}."),
+            "23" => PromptParam("Series codes to re-score (comma-separated, e.g. 00301,00560)",
+                        v => $"Re-score all PDs in series {v}."),
+
+            // ── Free-text or unknown ──────────────────────────────────────────────
+            _ when input.All(char.IsDigit) => null, // numeric but not a valid menu item
+            _ => input                               // treat as free-form chat
+        };
+    }
+
+    /// <summary>
+    /// Prompts the user for a parameter value then builds a prompt via <paramref name="buildPrompt"/>.
+    /// Returns null if the user enters nothing.
+    /// </summary>
+    private static string? PromptParam(string label, Func<string, string> buildPrompt)
+    {
+        AnsiConsole.Markup($"[grey]  {Markup.Escape(label)}:[/] ");
+        var value = Console.ReadLine()?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            AnsiConsole.MarkupLine("[grey]  (cancelled)[/]");
+            return null;
+        }
+        return buildPrompt(value);
     }
 
     private async Task RunAgenticTurnAsync(ChatOptions options, CancellationToken cancellationToken)
@@ -127,8 +292,9 @@ public sealed class AgenticChatSession
                     // Intercept cost-gate confirmation before the LLM sees it
                     resultJson = await HandleCostGateAsync(call.Name, args, resultJson, cancellationToken);
 
-                    // Render status results as a table immediately in the CLI
-                    TryRenderStatusTable(call.Name, resultJson);
+                    // Render status results as a table; replace JSON so LLM doesn't re-narrate
+                    if (TryRenderStatusTable(call.Name, resultJson))
+                        resultJson = "{\"displayed\":true,\"message\":\"Results shown in table above.\"}";
                 }
                 catch (Exception ex)
                 {
@@ -197,15 +363,26 @@ public sealed class AgenticChatSession
             if (!root.TryGetProperty("requiresConfirmation", out var flag) || !flag.GetBoolean())
                 return resultJson;
 
-            var count = root.TryGetProperty("pendingCount", out var c) ? c.GetInt32() : 0;
+            var hasCount = root.TryGetProperty("pendingCount", out var countEl);
+            var count = hasCount ? countEl.GetInt32() : 0;
             var cost  = root.TryGetProperty("estimatedCostUsd", out var e) ? e.GetDecimal() : 0m;
 
+            var recordLabel = toolName.StartsWith("generate_", StringComparison.OrdinalIgnoreCase)
+                ? "Documents to generate:"
+                : toolName.StartsWith("export_", StringComparison.OrdinalIgnoreCase)
+                    ? "Records to export:    "
+                    : toolName == "stage_pds_clear"
+                        ? "Records to delete:    "
+                        : toolName == "reset_failed_to_staged"
+                            ? "Failed records:       "
+                            : toolName == "stage_pds"
+                                ? "Records to stage:     "
+                                : "Records to process:   ";
+
             AnsiConsole.WriteLine();
-            var panel = new Panel(
-                    $"[yellow]Records to process:[/] [bold]{count:N0}[/]\n" +
-                    (cost > 0
-                        ? $"[yellow]Estimated cost:    [/] [bold]${cost:F2} USD[/]"
-                        : "[yellow]Estimated cost:    [/] [bold]$0.00 (free — local model)[/]"))
+            var panelContent = $"[yellow]{recordLabel}[/] [bold]{count:N0}[/]" +
+                (cost > 0 ? $"\n[yellow]Estimated cost:       [/] [bold]${cost:F2} USD[/]" : "");
+            var panel = new Panel(panelContent)
                 .Header("[bold yellow]⚠  Confirmation Required[/]")
                 .BorderColor(Color.Yellow);
             AnsiConsole.Write(panel);
@@ -234,12 +411,16 @@ public sealed class AgenticChatSession
 
             using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+            var actionLabel = toolName.StartsWith("generate_", StringComparison.OrdinalIgnoreCase)
+                ? $"Generating Word documents for [bold]{count:N0}[/] PDs."
+                : toolName.StartsWith("export_", StringComparison.OrdinalIgnoreCase)
+                    ? $"Exporting [bold]{count:N0}[/] records to Excel."
+                    : $"Scoring [bold]{count:N0}[/] PDs.";
+
             AnsiConsole.WriteLine();
             AnsiConsole.Write(new Panel(
-                    $"[grey]Scoring [bold]{count:N0}[/] PDs.\n" +
-                    "Progress updates appear above.\n" +
-                    "Press [bold]Esc[/] to cancel without exiting the CLI.[/]")
-                .Header("[bold cyan]Batch Running[/]")
+                    $"[grey]{actionLabel}\nProgress updates appear above.\nPress [bold]Esc[/] to cancel without exiting the CLI.[/]")
+                .Header("[bold cyan]Running[/]")
                 .BorderColor(Color.Cyan1));
             AnsiConsole.WriteLine();
 
@@ -365,14 +546,14 @@ public sealed class AgenticChatSession
         }
     }
 
-    private static void TryRenderStatusTable(string toolName, string resultJson)
+    private static bool TryRenderStatusTable(string toolName, string resultJson)
     {
         if (!toolName.StartsWith("get_processing_status", StringComparison.OrdinalIgnoreCase))
-            return;
+            return false;
 
         JsonDocument doc;
         try { doc = JsonDocument.Parse(resultJson); }
-        catch { return; }
+        catch { return false; }
 
         using (doc)
         {
@@ -414,7 +595,7 @@ public sealed class AgenticChatSession
 
                 AnsiConsole.WriteLine();
                 AnsiConsole.Write(table);
-                return;
+                return true;
             }
 
             // PD-level: { results: [{ pdNbr, title, orgCode, payPlan, series, grade, status, criteriaMet, rating, score }] }
@@ -477,7 +658,10 @@ public sealed class AgenticChatSession
 
                 AnsiConsole.WriteLine();
                 AnsiConsole.Write(table);
+                return true;
             }
+
+            return false;
         }
     }
 

@@ -19,19 +19,23 @@ public class ExportResultsToolHandler : IMcpToolHandler
     public object InputSchema => new
     {
         type = "object",
-        properties = new { }
+        properties = new
+        {
+            confirmed = new { type = "boolean", description = "Set to true to proceed after confirmation." }
+        }
     };
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        await _exportOrchestrator.ExportAllAsync();
-
-        var status = await _exportOrchestrator.GetExportStatusAsync();
-
-        return new
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) && c.GetBoolean();
+        if (!confirmed)
         {
-            total = status.Total,
-            exported = status.Exported
-        };
+            var count = await _exportOrchestrator.CountAllAsync();
+            return new { requiresConfirmation = true, pendingCount = count, estimatedCostUsd = 0m };
+        }
+
+        await _exportOrchestrator.ExportAllAsync();
+        var status = await _exportOrchestrator.GetExportStatusAsync();
+        return new { total = status.Total, exported = status.Exported };
     }
 }

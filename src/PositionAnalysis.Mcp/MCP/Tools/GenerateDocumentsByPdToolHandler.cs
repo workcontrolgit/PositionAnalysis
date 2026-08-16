@@ -40,12 +40,14 @@ public class GenerateDocumentsByPdToolHandler : IMcpToolHandler
         if (pdNumbers.Count == 0)
             return new { error = "Missing required parameter: pdNumbers (array of PD numbers)" };
 
-        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateByPdNumbersAsync(pdNumbers);
-
-        return new
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) && c.GetBoolean();
+        if (!confirmed)
         {
-            generated = succeeded,
-            failed
-        };
+            var count = await _documentGenerationOrchestrator.CountByPdNumbersAsync(pdNumbers);
+            return new { requiresConfirmation = true, pendingCount = count, estimatedCostUsd = 0m };
+        }
+
+        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateByPdNumbersAsync(pdNumbers);
+        return new { generated = succeeded, failed };
     }
 }

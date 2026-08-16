@@ -19,17 +19,22 @@ public class GenerateDocumentsToolHandler : IMcpToolHandler
     public object InputSchema => new
     {
         type = "object",
-        properties = new { }
+        properties = new
+        {
+            confirmed = new { type = "boolean", description = "Set to true to proceed after confirmation." }
+        }
     };
 
     public async Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateAllAsync();
-
-        return new
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) && c.GetBoolean();
+        if (!confirmed)
         {
-            generated = succeeded,
-            failed
-        };
+            var count = await _documentGenerationOrchestrator.CountAllAsync();
+            return new { requiresConfirmation = true, pendingCount = count, estimatedCostUsd = 0m };
+        }
+
+        var (succeeded, failed) = await _documentGenerationOrchestrator.GenerateAllAsync();
+        return new { generated = succeeded, failed };
     }
 }

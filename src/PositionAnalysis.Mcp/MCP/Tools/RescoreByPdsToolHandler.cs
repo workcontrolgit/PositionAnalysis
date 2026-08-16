@@ -9,15 +9,19 @@ namespace PositionAnalysis.Mcp.MCP.Tools;
 public class RescoreByPdsToolHandler : IMcpToolHandler
 {
     private readonly IScoringOrchestrator _scoringOrchestrator;
+    private readonly ICostGateService _costGate;
 
-    public RescoreByPdsToolHandler(IScoringOrchestrator scoringOrchestrator)
+    public RescoreByPdsToolHandler(IScoringOrchestrator scoringOrchestrator, ICostGateService costGate)
     {
         _scoringOrchestrator = scoringOrchestrator;
+        _costGate = costGate;
     }
 
     public string Name => "rescore_by_pds";
 
-    public string Description => "Force a fresh LLM rescore of one or more PDs by their PD numbers, overwriting any existing result regardless of current status";
+    public string Description =>
+        "Force a fresh LLM rescore of one or more PDs by their PD numbers, overwriting any existing result regardless of current status. " +
+        "Returns a requiresConfirmation payload first — re-call with confirmed: true to proceed.";
 
     public object InputSchema => new
     {
@@ -29,6 +33,11 @@ public class RescoreByPdsToolHandler : IMcpToolHandler
                 type = "array",
                 items = new { type = "string" },
                 description = "One or more position description numbers to rescore (e.g. ['200028', '200029'])"
+            },
+            confirmed = new
+            {
+                type = "boolean",
+                description = "Set to true to approve execution after the confirmation prompt."
             }
         },
         required = new[] { "pds" }
@@ -50,6 +59,21 @@ public class RescoreByPdsToolHandler : IMcpToolHandler
 
         if (pds.Count == 0)
             return new { error = "pds array cannot be empty" };
+
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) &&
+                        c.ValueKind == JsonValueKind.True;
+
+        if (!confirmed)
+        {
+            var estimatedCost = _costGate.Estimate(pds.Count);
+            return new
+            {
+                requiresConfirmation = true,
+                pendingCount = pds.Count,
+                estimatedCostUsd = estimatedCost,
+                thresholdUsd = _costGate.ThresholdUsd
+            };
+        }
 
         foreach (var pdNbr in pds)
             await _scoringOrchestrator.ScoreAsync(pdNbr);
