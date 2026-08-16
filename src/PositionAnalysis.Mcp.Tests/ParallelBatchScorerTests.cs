@@ -152,7 +152,7 @@ public class ParallelBatchScorerTests
     public void ProcessBatchByPdsToolHandler_Name_IsProcessBatchByPds()
     {
         var (scorer, _) = BuildScorer();
-        var handler = new ProcessBatchByPdsToolHandler(scorer, NullLogger<ProcessBatchByPdsToolHandler>.Instance);
+        var handler = new ProcessBatchByPdsToolHandler(scorer, new NeverGateCostGateService(), NullLogger<ProcessBatchByPdsToolHandler>.Instance);
         Assert.Equal("process_batch_by_pds", handler.Name);
     }
 
@@ -160,7 +160,7 @@ public class ParallelBatchScorerTests
     public async Task ProcessBatchByPdsToolHandler_InvokeAsync_ScoresAllPds()
     {
         var (scorer, orchestrator) = BuildScorer();
-        var handler = new ProcessBatchByPdsToolHandler(scorer, NullLogger<ProcessBatchByPdsToolHandler>.Instance);
+        var handler = new ProcessBatchByPdsToolHandler(scorer, new NeverGateCostGateService(), NullLogger<ProcessBatchByPdsToolHandler>.Instance);
 
         var result = await handler.InvokeAsync(PdNbrsArgs("300001", "300002"), CancellationToken.None);
 
@@ -174,7 +174,7 @@ public class ParallelBatchScorerTests
     public async Task ProcessBatchByPdsToolHandler_EmptyArray_ReturnsZero()
     {
         var (scorer, orchestrator) = BuildScorer();
-        var handler = new ProcessBatchByPdsToolHandler(scorer, NullLogger<ProcessBatchByPdsToolHandler>.Instance);
+        var handler = new ProcessBatchByPdsToolHandler(scorer, new NeverGateCostGateService(), NullLogger<ProcessBatchByPdsToolHandler>.Instance);
 
         var result = await handler.InvokeAsync(PdNbrsArgs(), CancellationToken.None);
 
@@ -187,7 +187,7 @@ public class ParallelBatchScorerTests
     public async Task ProcessBatchByPdsToolHandler_MissingProperty_ReturnsZero()
     {
         var (scorer, _) = BuildScorer();
-        var handler = new ProcessBatchByPdsToolHandler(scorer, NullLogger<ProcessBatchByPdsToolHandler>.Instance);
+        var handler = new ProcessBatchByPdsToolHandler(scorer, new NeverGateCostGateService(), NullLogger<ProcessBatchByPdsToolHandler>.Instance);
 
         var result = await handler.InvokeAsync(EmptyArgs(), CancellationToken.None);
 
@@ -228,5 +228,12 @@ public class ParallelBatchScorerTests
         public Task RescoreBySeriesAsync(IEnumerable<string> series) => Task.CompletedTask;
         public Task<int> RebucketRatingsAsync(IEnumerable<string>? series = null, IEnumerable<string>? pdNumbers = null) => Task.FromResult(0);
         public Task<EvaluationResult?> GetResultAsync(string pdNbr) => Task.FromResult<EvaluationResult?>(null);
+    }
+
+    private sealed class NeverGateCostGateService : ICostGateService
+    {
+        public decimal ThresholdUsd => decimal.MaxValue;
+        public decimal Estimate(int pdCount) => 0m;
+        public bool RequiresConfirmation(decimal estimatedCost) => false;
     }
 }
