@@ -151,13 +151,15 @@ public sealed class AgenticChatSession
                     "[bold]18[/] Clear staged PDs\n" +
                     "[bold]19[/] Reset failed → staged\n" +
                     "[bold]20[/] Run unattended scoring\n" +
-                    "[bold]21[/] Unattended queue status")
+                    "[bold]21[/] Unattended queue status\n" +
+                    "[bold]22[/] Recore by PD number\n" +
+                    "[bold]23[/] Recore by series")
                 .Header("[bold blue] Manage [/]")
                 .BorderColor(Color.Blue)
                 .Padding(1, 0),
 
             new Panel(
-                    "[grey]Type a number or ask a\nquestion in plain English.\n\n[bold]Q[/] — quit[/]")
+                    "[grey]Type a number or ask a\nquestion in plain English.\n\n[bold]?[/] — show menu\n[bold]Q[/] — quit[/]")
                 .Header("[grey] Help [/]")
                 .BorderColor(Color.Grey)
                 .Padding(1, 0));
@@ -217,6 +219,10 @@ public sealed class AgenticChatSession
             "19" => "Reset all failed evaluations back to staged for retry.",
             "20" => "Run unattended scoring for all staged pending PDs.",
             "21" => "Show unattended queue status.",
+            "22" => PromptParam("PD numbers to recore (comma-separated, e.g. 201921,201881)",
+                        v => $"Recore PD numbers {v}."),
+            "23" => PromptParam("Series codes to recore (comma-separated, e.g. 00301,00560)",
+                        v => $"Recore all PDs in series {v}."),
 
             // ── Free-text or unknown ──────────────────────────────────────────────
             _ when input.All(char.IsDigit) => null, // numeric but not a valid menu item
