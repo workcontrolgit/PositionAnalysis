@@ -21,13 +21,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$Root      = $PSScriptRoot
-$McpProj   = Join-Path $Root "src\PositionAnalysis.Mcp\PositionAnalysis.Mcp.csproj"
-$CliProj   = Join-Path $Root "src\PositionAnalysis.Cli\PositionAnalysis.Cli.csproj"
+$Root       = $PSScriptRoot
+$CliProj    = Join-Path $Root "src\PositionAnalysis.Cli\PositionAnalysis.Cli.csproj"
 $ScriptsDir = Join-Path $Root "scripts"
 
-$McpOut    = Join-Path $OutputPath "mcp"
-$CliOut    = Join-Path $OutputPath "cli"
+$CliOut     = Join-Path $OutputPath "cli"
 $ScriptsDst = Join-Path $OutputPath "scripts"
 
 function Write-Step($msg) {
@@ -42,15 +40,7 @@ if (Test-Path $OutputPath) {
 }
 New-Item $OutputPath -ItemType Directory -Force | Out-Null
 
-# ── Publish MCP server ────────────────────────────────────────────────────────
-Write-Step "Publishing PositionAnalysis.Mcp → $McpOut"
-dotnet publish $McpProj `
-    --configuration Release `
-    --output $McpOut `
-    --no-self-contained
-if ($LASTEXITCODE -ne 0) { throw "MCP publish failed (exit $LASTEXITCODE)" }
-
-# ── Publish CLI ───────────────────────────────────────────────────────────────
+# ── Publish CLI (includes MCP as subfolder) ───────────────────────────────────
 Write-Step "Publishing PositionAnalysis.Cli → $CliOut"
 dotnet publish $CliProj `
     --configuration Release `
@@ -65,7 +55,6 @@ Copy-Item $ScriptsDir $ScriptsDst -Recurse -Force
 # ── Summary ───────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "Build complete." -ForegroundColor Green
-Write-Host "  MCP server : $McpOut"
 Write-Host "  CLI        : $CliOut"
 Write-Host "  Scripts    : $ScriptsDst"
 Write-Host ""
