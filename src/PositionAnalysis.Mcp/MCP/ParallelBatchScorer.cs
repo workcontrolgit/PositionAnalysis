@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PositionAnalysis.Mcp.Application.Interfaces;
+using PositionAnalysis.Mcp.Application.Services;
 using PositionAnalysis.Mcp.Infrastructure.Config;
 
 namespace PositionAnalysis.Mcp.MCP;
@@ -14,15 +15,18 @@ namespace PositionAnalysis.Mcp.MCP;
 public sealed class ParallelBatchScorer
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly BatchCancellationService _cancelService;
     private readonly ILogger<ParallelBatchScorer> _logger;
     private readonly int _concurrency;
 
     public ParallelBatchScorer(
         IServiceScopeFactory scopeFactory,
+        BatchCancellationService cancelService,
         IOptions<McpSettings> mcpSettings,
         ILogger<ParallelBatchScorer> logger)
     {
         _scopeFactory = scopeFactory;
+        _cancelService = cancelService;
         _logger = logger;
         _concurrency = Math.Max(1, mcpSettings.Value.BatchConcurrency);
     }
@@ -49,10 +53,14 @@ public sealed class ParallelBatchScorer
         if (reportProgressAsync is not null)
             await reportProgressAsync(0, total);
 
+        // Link the caller's token with the BatchCancellationService so that
+        // the cancel_current_batch MCP tool can stop this batch independently.
+        using var linkedCts = _cancelService.Register(cancellationToken);
+
         await Parallel.ForEachAsync(pdNbrs, new ParallelOptions
         {
             MaxDegreeOfParallelism = _concurrency,
-            CancellationToken = cancellationToken
+            CancellationToken = linkedCts.Token
         },
         async (pdNbr, ct) =>
         {

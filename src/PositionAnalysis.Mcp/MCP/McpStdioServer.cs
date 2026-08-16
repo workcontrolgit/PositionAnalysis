@@ -114,15 +114,25 @@ public class McpStdioServer : BackgroundService
             {
                 // Cancel the matching in-flight tool call so its batch stops promptly.
                 var ridNode = request?["params"]?["requestId"];
+                _logger.LogInformation(
+                    "Received notifications/cancelled — requestId node: {Raw}, pending keys: [{Keys}]",
+                    ridNode?.ToJsonString() ?? "<null>",
+                    string.Join(", ", _pendingRequests.Keys));
+
                 if (ridNode is not null)
                 {
-                    var requestId = ridNode.ToJsonString();
+                    var requestId = NormalizeIdKey(ridNode);
                     if (_pendingRequests.TryRemove(requestId, out var pendingCts))
                     {
                         _logger.LogInformation(
                             "Cancelling in-flight request {RequestId} per client notifications/cancelled", requestId);
                         pendingCts.Cancel();
                         pendingCts.Dispose();
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "notifications/cancelled: no pending request found for id {RequestId}", requestId);
                     }
                 }
             }
@@ -174,9 +184,10 @@ public class McpStdioServer : BackgroundService
                         var progressToken = paramsNode?["_meta"]?["progressToken"]?.GetValue<string>();
 
                         // Per-request CTS so this tool call can be cancelled independently of the host.
-                        var requestId = idNode?.ToJsonString() ?? Guid.NewGuid().ToString();
+                        var requestId = idNode is not null ? NormalizeIdKey(idNode) : Guid.NewGuid().ToString();
                         var requestCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                         _pendingRequests[requestId] = requestCts;
+                        _logger.LogInformation("Registered pending request {RequestId}", requestId);
 
                         Func<double, double, Task>? reportProgressAsync = progressToken is not null
                             ? (current, total) => _channel.WriteProgressAsync(progressToken, current, total, stoppingToken)
@@ -262,6 +273,22 @@ public class McpStdioServer : BackgroundService
             if (_pendingRequests.TryRemove(requestId, out _))
                 requestCts.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Normalizes a JSON-RPC request ID node to a string key for dictionary lookup.
+    /// Handles both integer IDs (5 → "5") and string IDs ("5" → "5") so that
+    /// the original tools/call id and the notifications/cancelled requestId always match,
+    /// regardless of how the SDK serializes the type.
+    /// </summary>
+    private static string NormalizeIdKey(JsonNode node)
+    {
+        if (node is JsonValue val)
+        {
+            if (val.TryGetValue<long>(out var lng)) return lng.ToString();
+            if (val.TryGetValue<string>(out var str)) return str;
+        }
+        return node.ToJsonString();
     }
 
     private static object CreateSuccessResponse(JsonNode? idNode, object result) => new

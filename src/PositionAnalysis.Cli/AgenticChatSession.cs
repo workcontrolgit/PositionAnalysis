@@ -170,7 +170,7 @@ public sealed class AgenticChatSession
             return await toolTask;
 
         AnsiConsole.MarkupLine("[grey]  (Running… press [bold]Esc[/] to cancel)[/]");
-        return await WaitWithEscCancelAsync(toolTask, toolCts, () => _setSuppressProgress?.Invoke(true));
+        return await WaitWithEscCancelAsync(toolTask, toolCts, BuildEscCallback());
     }
 
     /// <summary>
@@ -242,7 +242,7 @@ public sealed class AgenticChatSession
 
             _setSuppressProgress?.Invoke(false); // ensure progress is enabled for the batch
             var batchTask = _registry.CallToolAsync(toolName, confirmedArgs, batchCts.Token);
-            return await WaitWithEscCancelAsync(batchTask, batchCts, () => _setSuppressProgress?.Invoke(true));
+            return await WaitWithEscCancelAsync(batchTask, batchCts, BuildEscCallback());
         }
     }
 
@@ -257,10 +257,28 @@ public sealed class AgenticChatSession
     /// the linked <paramref name="toolCts"/> and an OperationCanceledException propagates normally.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Returns a callback that suppresses progress output AND sends cancel_current_batch
+    /// to the MCP server so the server-side batch stops when ESC is pressed.
+    /// </summary>
+    private Func<Task> BuildEscCallback() => async () =>
+    {
+        _setSuppressProgress?.Invoke(true);
+        try
+        {
+            // Fire cancel_current_batch with CancellationToken.None so it isn't affected
+            // by the already-cancelled toolCts. The server's free read loop handles it
+            // immediately while the batch runs in a background task.
+            await _registry.CallToolAsync(
+                "cancel_current_batch", new Dictionary<string, object?>(), CancellationToken.None);
+        }
+        catch { /* best-effort — don't block the ESC path if the tool fails */ }
+    };
+
     private static async Task<string> WaitWithEscCancelAsync(
         Task<string> toolTask,
         CancellationTokenSource toolCts,
-        Action? onEscPressed = null)
+        Func<Task>? onEscAsync = null)
     {
         // Signal that ESC was pressed (true) or reader exited without ESC (false)
         var escTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -298,8 +316,8 @@ public sealed class AgenticChatSession
 
         if (winner == escTcs.Task && await escTcs.Task)
         {
-            // User pressed Esc — suppress further progress output immediately
-            onEscPressed?.Invoke();
+            // User pressed Esc — suppress progress and cancel the server-side batch
+            if (onEscAsync is not null) _ = onEscAsync();
             Console.Error.WriteLine(); // end the \r progress line
             AnsiConsole.MarkupLine("[yellow]  Cancellation requested…[/]");
             await toolCts.CancelAsync();

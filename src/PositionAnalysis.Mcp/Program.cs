@@ -131,6 +131,7 @@ public class Program
                 services.AddScoped<IExportOrchestrator, ExportOrchestrator>();
                 services.AddSingleton<ProcessAllRunStatusService>();
                 services.AddSingleton<ICostGateService, CostGateService>();
+                services.AddSingleton<BatchCancellationService>();
 
                 // MCP Infrastructure
                 // StdioChannel must be Singleton: it owns the SemaphoreSlim that
@@ -152,6 +153,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, ProcessBatchToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessBatchBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, ProcessBatchByPdsToolHandler>();
+                services.AddSingleton<IMcpToolHandler, CancelCurrentBatchToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, GetProcessingStatusByOrgsToolHandler>();
