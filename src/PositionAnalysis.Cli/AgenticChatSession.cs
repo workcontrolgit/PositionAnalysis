@@ -319,27 +319,28 @@ public sealed class AgenticChatSession
             Console.Error.WriteLine(); // end the \r progress line
             AnsiConsole.MarkupLine("[yellow]  Cancellation requested… please wait.[/]");
 
-            // Step 1: send cancel_current_batch and await confirmation that the server
-            // received the signal before doing anything else.
+            // Send cancel_current_batch and confirm the server received the signal.
             if (onEscAsync is not null)
-            {
-                try { await onEscAsync(); }
-                catch { /* ignore — best effort */ }
-            }
+                try { await onEscAsync(); } catch { /* best-effort */ }
 
-            // Step 2: cancel the client-side task too.
-            await toolCts.CancelAsync();
-
-            // Step 3: wait for the batch task to finish (server is stopping in-flight records).
-            // Timeout of 30 s covers up to ~10 concurrent LLM calls finishing naturally.
+            // Do NOT cancel toolCts here — that would throw OCE client-side immediately,
+            // making toolTask complete before the server finishes its in-flight records.
+            // Instead wait for toolTask naturally: the server will send its response once
+            // all in-flight LLM calls finish (after the batch CTS was cancelled above).
             AnsiConsole.MarkupLine("[grey]  Waiting for in-flight records to finish…[/]");
-            if (await Task.WhenAny(toolTask, Task.Delay(30_000, CancellationToken.None)) != toolTask)
+
+            if (await Task.WhenAny(toolTask, Task.Delay(60_000, CancellationToken.None)) != toolTask)
             {
-                // Still running after 30 s — abandon the task.
+                // Server didn't respond within 60 s — force cancel and abandon.
+                await toolCts.CancelAsync();
                 _ = toolTask.ContinueWith(_ => { }, CancellationToken.None,
                     TaskContinuationOptions.None, TaskScheduler.Default);
-                AnsiConsole.MarkupLine("[yellow]  Cancelled.[/]");
-                return "{\"cancelled\":true,\"message\":\"Batch cancelled by user (Esc).\"}";
+            }
+            else
+            {
+                // Observe the task to suppress UnobservedTaskException.
+                _ = toolTask.ContinueWith(_ => { }, CancellationToken.None,
+                    TaskContinuationOptions.None, TaskScheduler.Default);
             }
 
             AnsiConsole.MarkupLine("[yellow]  Cancelled.[/]");
