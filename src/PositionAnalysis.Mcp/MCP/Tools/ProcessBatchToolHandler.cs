@@ -71,19 +71,16 @@ public sealed class ProcessBatchToolHandler : IMcpStreamingToolHandler
         if (!confirmed)
         {
             var estimatedCost = _costGate.Estimate(pendingPdNbrs.Count);
-            if (_costGate.RequiresConfirmation(estimatedCost))
+            _logger.LogInformation(
+                "process_batch_all: awaiting confirmation for {Count} PDs (est. ${Cost:F2})",
+                pendingPdNbrs.Count, estimatedCost);
+            return new
             {
-                _logger.LogInformation(
-                    "process_batch_all: cost gate triggered for {Count} PDs (est. ${Cost:F2})",
-                    pendingPdNbrs.Count, estimatedCost);
-                return new
-                {
-                    requiresConfirmation = true,
-                    pendingCount = pendingPdNbrs.Count,
-                    estimatedCostUsd = estimatedCost,
-                    thresholdUsd = _costGate.ThresholdUsd
-                };
-            }
+                requiresConfirmation = true,
+                pendingCount = pendingPdNbrs.Count,
+                estimatedCostUsd = estimatedCost,
+                thresholdUsd = _costGate.ThresholdUsd
+            };
         }
 
         _logger.LogInformation("process_batch_all: {Count} pending PDs found globally", pendingPdNbrs.Count);

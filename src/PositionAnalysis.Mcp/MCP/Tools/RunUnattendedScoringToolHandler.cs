@@ -64,19 +64,16 @@ public class RunUnattendedScoringToolHandler : IMcpToolHandler
             }
 
             var estimatedCost = _costGate.Estimate(pendingCount);
-            if (_costGate.RequiresConfirmation(estimatedCost))
+            _logger.LogInformation(
+                "run_unattended_scoring: awaiting confirmation for {Count} PDs (est. ${Cost:F2})",
+                pendingCount, estimatedCost);
+            return new
             {
-                _logger.LogInformation(
-                    "run_unattended_scoring: cost gate triggered for {Count} PDs (est. ${Cost:F2})",
-                    pendingCount, estimatedCost);
-                return new
-                {
-                    requiresConfirmation = true,
-                    pendingCount,
-                    estimatedCostUsd = estimatedCost,
-                    thresholdUsd = _costGate.ThresholdUsd
-                };
-            }
+                requiresConfirmation = true,
+                pendingCount,
+                estimatedCostUsd = estimatedCost,
+                thresholdUsd = _costGate.ThresholdUsd
+            };
         }
 
         _ = _runStatusService.StartAsync(_scoringOrchestrator.ScoreAllAsync);

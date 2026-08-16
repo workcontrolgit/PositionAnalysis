@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
@@ -48,6 +49,7 @@ public sealed class McpToolRegistry
 
         var result = await tool.CallAsync(
             new Dictionary<string, object?>(args),
+            progress: new Progress<ModelContextProtocol.ProgressNotificationValue>(_ => { }),
             cancellationToken: cancellationToken);
 
         return string.Join("",

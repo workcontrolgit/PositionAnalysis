@@ -100,14 +100,23 @@ try
     await using var oracleClientDisposer = oracleClient;
 
     using var interactiveCts = new CancellationTokenSource();
-    Console.CancelKeyPress += (_, e) => { e.Cancel = true; interactiveCts.Cancel(); };
-    AppDomain.CurrentDomain.ProcessExit += (_, _) => interactiveCts.Cancel();
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        try { interactiveCts.Cancel(); } catch (ObjectDisposedException) { }
+    };
+    AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+    {
+        try { interactiveCts.Cancel(); } catch (ObjectDisposedException) { }
+    };
 
     // ── Progress notification handler (shared across both clients) ───────────────
     int lastPct = -1;
+    bool suppressProgress = false;
 
     ValueTask OnProgressNotification(JsonRpcNotification notification, CancellationToken _ct)
     {
+        if (suppressProgress) return ValueTask.CompletedTask;
         if (notification.Params?.Deserialize<ProgressNotificationParams>(McpJsonUtilities.DefaultOptions) is { } pn)
         {
             var current = (int)pn.Progress.Progress;
@@ -143,7 +152,8 @@ try
     IChatClient chatClient = BuildChatClient(configuration, provider);
     var modelDisplay = GetModelDisplay(configuration, provider);
 
-    var session = new AgenticChatSession(chatClient, registry, modelDisplay);
+    var session = new AgenticChatSession(chatClient, registry, modelDisplay,
+        setSuppressProgress: v => { suppressProgress = v; if (!v) lastPct = -1; });
 
     await session.RunAsync(interactiveCts.Token);
 }

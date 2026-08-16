@@ -93,19 +93,16 @@ public sealed class ProcessBatchBySeriesToolHandler : IMcpStreamingToolHandler
         if (!confirmed)
         {
             var estimatedCost = _costGate.Estimate(pendingPdNbrs.Count);
-            if (_costGate.RequiresConfirmation(estimatedCost))
+            _logger.LogInformation(
+                "process_batch_by_series: awaiting confirmation for {Count} PDs (est. ${Cost:F2})",
+                pendingPdNbrs.Count, estimatedCost);
+            return new
             {
-                _logger.LogInformation(
-                    "process_batch_by_series: cost gate triggered for {Count} PDs (est. ${Cost:F2})",
-                    pendingPdNbrs.Count, estimatedCost);
-                return new
-                {
-                    requiresConfirmation = true,
-                    pendingCount = pendingPdNbrs.Count,
-                    estimatedCostUsd = estimatedCost,
-                    thresholdUsd = _costGate.ThresholdUsd
-                };
-            }
+                requiresConfirmation = true,
+                pendingCount = pendingPdNbrs.Count,
+                estimatedCostUsd = estimatedCost,
+                thresholdUsd = _costGate.ThresholdUsd
+            };
         }
 
         _logger.LogInformation(

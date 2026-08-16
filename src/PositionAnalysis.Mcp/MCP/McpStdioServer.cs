@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Hosting;
@@ -20,6 +21,10 @@ public class McpStdioServer : BackgroundService
     private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<McpStdioServer> _logger;
 
+    // Tracks in-flight tool calls keyed by JSON-RPC request ID so that
+    // notifications/cancelled can abort the right background task.
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _pendingRequests = new();
+
     public McpStdioServer(
         McpToolsProvider toolsProvider,
         StdioChannel channel,
@@ -36,36 +41,50 @@ public class McpStdioServer : BackgroundService
     {
         _logger.LogInformation("MCP stdio server started");
 
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            string? line;
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                line = await Console.In.ReadLineAsync().WaitAsync(stoppingToken);
+                string? line;
+                try
+                {
+                    line = await Console.In.ReadLineAsync().WaitAsync(stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+
+                if (line == null)
+                {
+                    // stdin closed — the client process has exited; shut down this server.
+                    _logger.LogInformation("stdin closed — stopping MCP server");
+                    _lifetime.StopApplication();
+                    break;
+                }
+
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                // HandleRequestAsync returns immediately for tool/call (dispatched to background)
+                // and synchronously for all other methods, so the read loop never blocks.
+                await HandleRequestAsync(line, stoppingToken);
             }
-            catch (OperationCanceledException)
+        }
+        finally
+        {
+            // Cancel every in-flight batch when the server stops.
+            foreach (var (_, cts) in _pendingRequests)
             {
-                break;
+                try { cts.Cancel(); cts.Dispose(); } catch { }
             }
-
-            if (line == null)
-            {
-                // stdin closed — the client process has exited; shut down this server.
-                _logger.LogInformation("stdin closed — stopping MCP server");
-                _lifetime.StopApplication();
-                break;
-            }
-
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            await HandleRequestAsync(line, stoppingToken);
+            _pendingRequests.Clear();
         }
 
         _logger.LogInformation("MCP stdio server stopped");
     }
 
-    private async Task HandleRequestAsync(string requestLine, CancellationToken cancellationToken)
+    private async Task HandleRequestAsync(string requestLine, CancellationToken stoppingToken)
     {
         JsonNode? request;
         try
@@ -75,7 +94,7 @@ public class McpStdioServer : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Invalid JSON request: {Request}", requestLine);
-            await _channel.WriteAsync(CreateErrorResponse(null, -32700, "Parse error"), cancellationToken);
+            await _channel.WriteAsync(CreateErrorResponse(null, -32700, "Parse error"), stoppingToken);
             return;
         }
 
@@ -84,7 +103,33 @@ public class McpStdioServer : BackgroundService
 
         if (string.IsNullOrWhiteSpace(method))
         {
-            await _channel.WriteAsync(CreateErrorResponse(idNode, -32600, "Invalid Request: missing method"), cancellationToken);
+            await _channel.WriteAsync(CreateErrorResponse(idNode, -32600, "Invalid Request: missing method"), stoppingToken);
+            return;
+        }
+
+        // Notifications have no id and expect no response — handle before the switch.
+        if (idNode == null && method.StartsWith("notifications/", StringComparison.OrdinalIgnoreCase))
+        {
+            if (method.Equals("notifications/cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                // Cancel the matching in-flight tool call so its batch stops promptly.
+                var ridNode = request?["params"]?["requestId"];
+                if (ridNode is not null)
+                {
+                    var requestId = ridNode.ToJsonString();
+                    if (_pendingRequests.TryRemove(requestId, out var pendingCts))
+                    {
+                        _logger.LogInformation(
+                            "Cancelling in-flight request {RequestId} per client notifications/cancelled", requestId);
+                        pendingCts.Cancel();
+                        pendingCts.Dispose();
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogDebug("Received notification: {Method}", method);
+            }
             return;
         }
 
@@ -98,18 +143,18 @@ public class McpStdioServer : BackgroundService
                         protocolVersion = "2024-11-05",
                         capabilities = new { tools = new { } },
                         serverInfo = new { name = "PositionAnalysis.Mcp", version = "0.1.0" }
-                    }), cancellationToken);
+                    }), stoppingToken);
                     break;
 
                 case "ping":
-                    await _channel.WriteAsync(CreateSuccessResponse(idNode, new { }), cancellationToken);
+                    await _channel.WriteAsync(CreateSuccessResponse(idNode, new { }), stoppingToken);
                     break;
 
                 case "tools/list":
                     await _channel.WriteAsync(CreateSuccessResponse(idNode, new
                     {
                         tools = _toolsProvider.ListTools()
-                    }), cancellationToken);
+                    }), stoppingToken);
                     break;
 
                 case "tools/call":
@@ -118,7 +163,7 @@ public class McpStdioServer : BackgroundService
                         var name = paramsNode?["name"]?.GetValue<string>();
                         if (string.IsNullOrWhiteSpace(name))
                         {
-                            await _channel.WriteAsync(CreateErrorResponse(idNode, -32602, "Invalid params: name is required"), cancellationToken);
+                            await _channel.WriteAsync(CreateErrorResponse(idNode, -32602, "Invalid params: name is required"), stoppingToken);
                             break;
                         }
 
@@ -126,39 +171,96 @@ public class McpStdioServer : BackgroundService
                         var argsElement = JsonSerializer.SerializeToElement(argsNode ?? new JsonObject(), JsonOptions);
 
                         // MCP spec: the client embeds a progress token in params._meta.progressToken.
-                        // When present, we wire up a delegate that writes notifications/progress to
-                        // stdout via StdioChannel so it never interleaves with the final response.
                         var progressToken = paramsNode?["_meta"]?["progressToken"]?.GetValue<string>();
+
+                        // Per-request CTS so this tool call can be cancelled independently of the host.
+                        var requestId = idNode?.ToJsonString() ?? Guid.NewGuid().ToString();
+                        var requestCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                        _pendingRequests[requestId] = requestCts;
+
                         Func<double, double, Task>? reportProgressAsync = progressToken is not null
-                            ? (current, total) => _channel.WriteProgressAsync(progressToken, current, total, cancellationToken)
+                            ? (current, total) => _channel.WriteProgressAsync(progressToken, current, total, stoppingToken)
                             : null;
 
-                        var result = await _toolsProvider.CallToolAsync(
-                            name, argsElement, progressToken, reportProgressAsync, cancellationToken);
-
-                        await _channel.WriteAsync(CreateSuccessResponse(idNode, new
-                        {
-                            content = new[]
-                            {
-                                new
-                                {
-                                    type = "text",
-                                    text = JsonSerializer.Serialize(result, JsonOptions)
-                                }
-                            }
-                        }), cancellationToken);
+                        // Dispatch to background so the read loop keeps running and can
+                        // receive notifications/cancelled while the batch executes.
+                        _ = ExecuteToolCallAsync(
+                            name, argsElement, progressToken, reportProgressAsync,
+                            idNode, requestId, requestCts, stoppingToken);
                         break;
                     }
 
                 default:
-                    await _channel.WriteAsync(CreateErrorResponse(idNode, -32601, $"Method not found: {method}"), cancellationToken);
+                    await _channel.WriteAsync(CreateErrorResponse(idNode, -32601, $"Method not found: {method}"), stoppingToken);
                     break;
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed processing method {Method}", method);
-            await _channel.WriteAsync(CreateErrorResponse(idNode, -32000, ex.Message), cancellationToken);
+            await _channel.WriteAsync(CreateErrorResponse(idNode, -32000, ex.Message), stoppingToken);
+        }
+    }
+
+    /// <summary>
+    /// Executes a tool call on a background task and writes the JSON-RPC response when done.
+    /// Cancelled gracefully when <c>notifications/cancelled</c> arrives for this request ID.
+    /// </summary>
+    private async Task ExecuteToolCallAsync(
+        string name,
+        JsonElement argsElement,
+        string? progressToken,
+        Func<double, double, Task>? reportProgressAsync,
+        JsonNode? idNode,
+        string requestId,
+        CancellationTokenSource requestCts,
+        CancellationToken stoppingToken)
+    {
+        try
+        {
+            var result = await _toolsProvider.CallToolAsync(
+                name, argsElement, progressToken, reportProgressAsync, requestCts.Token);
+
+            await _channel.WriteAsync(CreateSuccessResponse(idNode, new
+            {
+                content = new[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = JsonSerializer.Serialize(result, JsonOptions)
+                    }
+                }
+            }), stoppingToken);
+        }
+        catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+        {
+            // Cancelled via notifications/cancelled — send an error response so the client unblocks.
+            _logger.LogInformation("Tool call {Name} (request {RequestId}) was cancelled by client", name, requestId);
+            try
+            {
+                await _channel.WriteAsync(
+                    CreateErrorResponse(idNode, -32000, "Request cancelled by client"), stoppingToken);
+            }
+            catch { /* server may be shutting down */ }
+        }
+        catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+        {
+            _logger.LogError(ex, "Failed executing tool {Name}", name);
+            try
+            {
+                await _channel.WriteAsync(CreateErrorResponse(idNode, -32000, ex.Message), stoppingToken);
+            }
+            catch { /* server may be shutting down */ }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Tool call {Name} aborted due to server shutdown", name);
+        }
+        finally
+        {
+            if (_pendingRequests.TryRemove(requestId, out _))
+                requestCts.Dispose();
         }
     }
 

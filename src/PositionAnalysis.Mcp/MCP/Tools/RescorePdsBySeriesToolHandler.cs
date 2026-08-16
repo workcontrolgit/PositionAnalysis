@@ -91,19 +91,16 @@ public class RescorePdsBySeriesToolHandler : IMcpToolHandler
             }
 
             var estimatedCost = _costGate.Estimate(totalCount);
-            if (_costGate.RequiresConfirmation(estimatedCost))
+            _logger.LogInformation(
+                "rescore_by_series: awaiting confirmation for {Count} PDs (est. ${Cost:F2})",
+                totalCount, estimatedCost);
+            return new
             {
-                _logger.LogInformation(
-                    "rescore_by_series: cost gate triggered for {Count} PDs (est. ${Cost:F2})",
-                    totalCount, estimatedCost);
-                return new
-                {
-                    requiresConfirmation = true,
-                    pendingCount = totalCount,
-                    estimatedCostUsd = estimatedCost,
-                    thresholdUsd = _costGate.ThresholdUsd
-                };
-            }
+                requiresConfirmation = true,
+                pendingCount = totalCount,
+                estimatedCostUsd = estimatedCost,
+                thresholdUsd = _costGate.ThresholdUsd
+            };
         }
 
         await _scoringOrchestrator.RescoreBySeriesAsync(series);

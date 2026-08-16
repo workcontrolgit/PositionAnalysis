@@ -24,13 +24,16 @@ public sealed class AgenticChatSession
     private readonly McpToolRegistry _registry;
     private readonly string _modelName;
     private readonly List<ChatMessage> _history;
+    private readonly Action<bool>? _setSuppressProgress;
 
-    public AgenticChatSession(IChatClient chatClient, McpToolRegistry registry, string modelName)
+    public AgenticChatSession(IChatClient chatClient, McpToolRegistry registry, string modelName,
+        Action<bool>? setSuppressProgress = null)
     {
         _chatClient = chatClient;
         _registry = registry;
         _modelName = modelName;
         _history = [new ChatMessage(ChatRole.System, SystemPrompt)];
+        _setSuppressProgress = setSuppressProgress;
     }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -110,6 +113,7 @@ public sealed class AgenticChatSession
 
             // Execute all tool calls and feed results back
             var resultMessage = new ChatMessage { Role = ChatRole.Tool };
+            bool wasCancelled = false;
             foreach (var call in calls)
             {
                 AnsiConsole.MarkupLine($"[grey]  → calling [bold]{Markup.Escape(call.Name)}[/]…[/]");
@@ -118,7 +122,7 @@ public sealed class AgenticChatSession
                 try
                 {
                     var args = new Dictionary<string, object?>(call.Arguments ?? new Dictionary<string, object?>());
-                    resultJson = await _registry.CallToolAsync(call.Name, args, cancellationToken);
+                    resultJson = await CallToolWithProgressUiAsync(call.Name, args, cancellationToken);
 
                     // Intercept cost-gate confirmation before the LLM sees it
                     resultJson = await HandleCostGateAsync(call.Name, args, resultJson, cancellationToken);
@@ -129,13 +133,44 @@ public sealed class AgenticChatSession
                     AnsiConsole.MarkupLine($"[red]  Tool error:[/] {Markup.Escape(ex.Message)}");
                 }
 
+                if (IsCancelledResult(resultJson))
+                    wasCancelled = true;
+
                 resultMessage.Contents.Add(
                     new FunctionResultContent(call.CallId, resultJson));
             }
 
             _history.Add(resultMessage);
+
+            // If the user cancelled the batch, return to the You ▶ prompt immediately
+            // instead of feeding the result to the LLM (which would try another tool call
+            // against the still-busy single-threaded MCP server).
+            if (wasCancelled)
+                return;
+
             // Loop: feed results back to the LLM for its next response
         }
+    }
+
+    /// <summary>
+    /// Runs a tool call in the background. Fast tools (&lt;2 s) return transparently.
+    /// Slow tools show an Esc-to-cancel hint and hand off to <see cref="WaitWithEscCancelAsync"/>.
+    /// </summary>
+    private async Task<string> CallToolWithProgressUiAsync(
+        string name,
+        Dictionary<string, object?> args,
+        CancellationToken cancellationToken)
+    {
+        _setSuppressProgress?.Invoke(false); // re-enable progress for this tool call
+        using var toolCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var toolTask = _registry.CallToolAsync(name, args, toolCts.Token);
+
+        // Fast path: tool finished within 2 seconds — no UI needed
+        if (await Task.WhenAny(toolTask, Task.Delay(2000, CancellationToken.None)) == toolTask)
+            return await toolTask;
+
+        AnsiConsole.MarkupLine("[grey]  (Running… press [bold]Esc[/] to cancel)[/]");
+        return await WaitWithEscCancelAsync(toolTask, toolCts, () => _setSuppressProgress?.Invoke(true));
     }
 
     /// <summary>
@@ -190,11 +225,121 @@ public sealed class AgenticChatSession
                 return "{\"cancelled\":true,\"message\":\"User cancelled the batch operation.\"}";
             }
 
-            // User confirmed — re-call the tool with confirmed:true
+            // User confirmed — re-call with confirmed:true, show the Batch Running panel
             AnsiConsole.MarkupLine($"[grey]  → re-calling [bold]{Markup.Escape(toolName)}[/] (confirmed)…[/]");
             var confirmedArgs = new Dictionary<string, object?>(originalArgs) { ["confirmed"] = true };
-            return await _registry.CallToolAsync(toolName, confirmedArgs, cancellationToken);
+
+            using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            AnsiConsole.WriteLine();
+            AnsiConsole.Write(new Panel(
+                    $"[grey]Scoring [bold]{count:N0}[/] PDs.\n" +
+                    "Progress updates appear above.\n" +
+                    "Press [bold]Esc[/] to cancel without exiting the CLI.[/]")
+                .Header("[bold cyan]Batch Running[/]")
+                .BorderColor(Color.Cyan1));
+            AnsiConsole.WriteLine();
+
+            _setSuppressProgress?.Invoke(false); // ensure progress is enabled for the batch
+            var batchTask = _registry.CallToolAsync(toolName, confirmedArgs, batchCts.Token);
+            return await WaitWithEscCancelAsync(batchTask, batchCts, () => _setSuppressProgress?.Invoke(true));
         }
+    }
+
+    /// <summary>
+    /// Waits for <paramref name="toolTask"/> while listening for Esc on a dedicated background thread.
+    /// <para>
+    /// If Esc is pressed: cancels <paramref name="toolCts"/>, waits up to 5 seconds for the MCP
+    /// client to acknowledge, then abandons the task if it still hasn't completed.
+    /// </para>
+    /// <para>
+    /// If the outer CancellationToken fires (Ctrl+C): <paramref name="toolTask"/> is cancelled via
+    /// the linked <paramref name="toolCts"/> and an OperationCanceledException propagates normally.
+    /// </para>
+    /// </summary>
+    private static async Task<string> WaitWithEscCancelAsync(
+        Task<string> toolTask,
+        CancellationTokenSource toolCts,
+        Action? onEscPressed = null)
+    {
+        // Signal that ESC was pressed (true) or reader exited without ESC (false)
+        var escTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Dedicated thread: Console.ReadKey is blocking and works reliably only on its own thread.
+        // We avoid Console.ReadKey() unless KeyAvailable is true to prevent blocking when the tool
+        // completes — the thread exits on the next 50ms sleep after readerCts is cancelled.
+        using var readerCts = new CancellationTokenSource();
+        var readerThread = new Thread(() =>
+        {
+            try
+            {
+                while (!readerCts.IsCancellationRequested)
+                {
+                    if (Console.KeyAvailable)
+                    {
+                        var key = Console.ReadKey(intercept: true);
+                        if (key.Key == ConsoleKey.Escape)
+                        {
+                            escTcs.TrySetResult(true);
+                            return;
+                        }
+                    }
+                    Thread.Sleep(50);
+                }
+            }
+            catch { /* ignore console exceptions (e.g. redirected stdin) */ }
+            escTcs.TrySetResult(false);
+        }) { IsBackground = true, Name = "EscReader" };
+        readerThread.Start();
+
+        // Wait for whichever happens first: tool completes or ESC pressed
+        var winner = await Task.WhenAny(toolTask, escTcs.Task);
+        readerCts.Cancel(); // signal reader thread to exit (exits within ~50 ms)
+
+        if (winner == escTcs.Task && await escTcs.Task)
+        {
+            // User pressed Esc — suppress further progress output immediately
+            onEscPressed?.Invoke();
+            Console.Error.WriteLine(); // end the \r progress line
+            AnsiConsole.MarkupLine("[yellow]  Cancellation requested…[/]");
+            await toolCts.CancelAsync();
+
+            // Give the MCP SDK up to 5 seconds to acknowledge the cancellation.
+            // If the server is mid-batch it may not respond immediately; we abandon after the timeout.
+            if (await Task.WhenAny(toolTask, Task.Delay(5000, CancellationToken.None)) != toolTask)
+            {
+                // Suppress the unobserved-task-exception the abandoned task will eventually raise
+                _ = toolTask.ContinueWith(_ => { }, CancellationToken.None,
+                    TaskContinuationOptions.None, TaskScheduler.Default);
+                AnsiConsole.MarkupLine("[yellow]  Cancelled. The server will finish its current record, then stop.[/]");
+                AnsiConsole.MarkupLine("[yellow]  CLI is ready for your next command.[/]");
+                return "{\"cancelled\":true,\"message\":\"Batch cancelled by user (Esc). Server finishes its current record.\"}";
+            }
+        }
+
+        Console.Error.WriteLine(); // ensure progress line is terminated
+
+        try
+        {
+            var result = await toolTask;
+            AnsiConsole.MarkupLine("[green]  Done.[/]");
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            AnsiConsole.MarkupLine("[yellow]  Cancelled. CLI is ready.[/]");
+            return "{\"cancelled\":true,\"message\":\"Operation cancelled.\"}";
+        }
+    }
+
+    private static bool IsCancelledResult(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.TryGetProperty("cancelled", out var v) && v.ValueKind == JsonValueKind.True;
+        }
+        catch { return false; }
     }
 
     private static void LogTokenUsage(UsageDetails? usage)
