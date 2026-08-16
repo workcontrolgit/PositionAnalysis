@@ -10,4 +10,8 @@ public interface IExportOrchestrator
     Task ExportByPdNumbersAsync(IEnumerable<string> pdNumbers);
     Task ExportByOrgCodesAsync(IEnumerable<string> orgCodes);
     Task<(int Total, int Exported)> GetExportStatusAsync();
+    Task<int> CountAllAsync();
+    Task<int> CountBySeriesAsync(IEnumerable<string> series);
+    Task<int> CountByPdNumbersAsync(IEnumerable<string> pdNumbers);
+    Task<int> CountByOrgCodesAsync(IEnumerable<string> orgCodes);
 }

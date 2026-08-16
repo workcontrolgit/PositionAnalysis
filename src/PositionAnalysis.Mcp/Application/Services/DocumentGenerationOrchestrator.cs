@@ -223,6 +223,74 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
         return completedResults.Count;
     }
 
+    public async Task<int> CountAllAsync()
+    {
+        var results = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);
+        return results.Count;
+    }
+
+    public async Task<int> CountBySeriesAsync(IEnumerable<string> series)
+    {
+        var seriesList = (series ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var selected = new List<EvaluationResult>();
+        foreach (var seriesCode in seriesList)
+        {
+            try
+            {
+                var results = await _evalRepository.GetBySeriesAsync(new OccupationalSeries(seriesCode));
+                selected.AddRange(results.Where(IsCompletedResult));
+            }
+            catch (ArgumentException) { }
+        }
+
+        return selected.GroupBy(r => r.PdNbr, StringComparer.OrdinalIgnoreCase).Count();
+    }
+
+    public async Task<int> CountByPdNumbersAsync(IEnumerable<string> pdNumbers)
+    {
+        var pdNbrList = (pdNumbers ?? [])
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var count = 0;
+        foreach (var pdNbr in pdNbrList)
+        {
+            var result = await _evalRepository.GetByPdAsync(pdNbr);
+            if (result != null && IsCompletedResult(result))
+                count++;
+        }
+        return count;
+    }
+
+    public async Task<int> CountByOrgCodesAsync(IEnumerable<string> orgCodes)
+    {
+        var orgCodeList = (orgCodes ?? [])
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(o => o.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var completedResults = await _evalRepository.GetByStatusAsync(EvaluationStatus.Complete);
+        var count = 0;
+        foreach (var result in completedResults)
+        {
+            var pd = await _pdRepository.GetByPdNbrAsync(result.PdNbr);
+            if (pd == null) continue;
+            if (orgCodeList.Any(code =>
+                    string.Equals(pd.OrganizationCode, code, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(pd.BureauCode, code, StringComparison.OrdinalIgnoreCase)))
+                count++;
+        }
+        return count;
+    }
+
     private async Task<(int succeeded, int failed)> GenerateInternalAsync(IEnumerable<EvaluationResult> results)
     {
         var successCount = 0;

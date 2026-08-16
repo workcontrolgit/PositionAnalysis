@@ -10,4 +10,8 @@ public interface IDocumentGenerationOrchestrator
     Task<(int Succeeded, int Failed)> GenerateByPdNumbersAsync(IEnumerable<string> pdNumbers);
     Task<(int Succeeded, int Failed)> GenerateByOrgCodesAsync(IEnumerable<string> orgCodes);
     Task<int> GetGenerationProgressAsync();
+    Task<int> CountAllAsync();
+    Task<int> CountBySeriesAsync(IEnumerable<string> series);
+    Task<int> CountByPdNumbersAsync(IEnumerable<string> pdNumbers);
+    Task<int> CountByOrgCodesAsync(IEnumerable<string> orgCodes);
 }

@@ -40,14 +40,15 @@ public class ExportResultsByOrgsToolHandler : IMcpToolHandler
         if (orgCodes.Count == 0)
             return new { error = "Missing required parameter: orgCodes (array of bureau/org codes)" };
 
-        await _exportOrchestrator.ExportByOrgCodesAsync(orgCodes);
-
-        var status = await _exportOrchestrator.GetExportStatusAsync();
-
-        return new
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) && c.GetBoolean();
+        if (!confirmed)
         {
-            total = status.Total,
-            exported = status.Exported
-        };
+            var count = await _exportOrchestrator.CountByOrgCodesAsync(orgCodes);
+            return new { requiresConfirmation = true, pendingCount = count, estimatedCostUsd = 0m };
+        }
+
+        await _exportOrchestrator.ExportByOrgCodesAsync(orgCodes);
+        var status = await _exportOrchestrator.GetExportStatusAsync();
+        return new { total = status.Total, exported = status.Exported };
     }
 }

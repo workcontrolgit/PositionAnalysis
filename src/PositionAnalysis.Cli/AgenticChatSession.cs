@@ -18,7 +18,9 @@ public sealed class AgenticChatSession
         "evaluation documents, exporting results, and querying the Oracle database. " +
         "Call tools when the user requests workflow actions. " +
         "Cost-gate confirmations are handled automatically by the CLI — you do not need to ask " +
-        "the user to confirm or re-call tools with confirmed:true.";
+        "the user to confirm or re-call tools with confirmed:true. " +
+        "When a tool result contains {\"displayed\":true}, the data was already rendered as a table " +
+        "in the terminal. Respond with one brief sentence only — do NOT re-list or summarize the data.";
 
     private readonly IChatClient _chatClient;
     private readonly McpToolRegistry _registry;
@@ -46,11 +48,14 @@ public sealed class AgenticChatSession
 
         var options = new ChatOptions { Tools = [.. _registry.Tools] };
 
+        // Show menu once at startup
+        AnsiConsole.WriteLine();
+        RenderMenu();
+        AnsiConsole.MarkupLine("[grey]Type [bold]?[/] at any time to show this menu again.[/]");
+
         while (!cancellationToken.IsCancellationRequested)
         {
             AnsiConsole.WriteLine();
-            RenderMenu();
-
             AnsiConsole.Markup("[bold cyan]You[/] [grey]▶[/] ");
             var input = Console.ReadLine();
 
@@ -67,10 +72,17 @@ public sealed class AgenticChatSession
                 break;
             }
 
+            // On-demand menu
+            if (trimmed is "?" or "menu" or "help")
+            {
+                RenderMenu();
+                continue;
+            }
+
             // Resolve menu shortcut → natural-language prompt (may prompt for params)
             var prompt = ResolveMenuShortcut(trimmed);
             if (prompt == null)
-                continue; // invalid shortcut — loop back to menu
+                continue; // invalid shortcut — re-prompt
 
             _history.Add(new ChatMessage(ChatRole.User, prompt));
 
@@ -273,8 +285,9 @@ public sealed class AgenticChatSession
                     // Intercept cost-gate confirmation before the LLM sees it
                     resultJson = await HandleCostGateAsync(call.Name, args, resultJson, cancellationToken);
 
-                    // Render status results as a table immediately in the CLI
-                    TryRenderStatusTable(call.Name, resultJson);
+                    // Render status results as a table; replace JSON so LLM doesn't re-narrate
+                    if (TryRenderStatusTable(call.Name, resultJson))
+                        resultJson = "{\"displayed\":true,\"message\":\"Results shown in table above.\"}";
                 }
                 catch (Exception ex)
                 {
@@ -346,12 +359,16 @@ public sealed class AgenticChatSession
             var count = root.TryGetProperty("pendingCount", out var c) ? c.GetInt32() : 0;
             var cost  = root.TryGetProperty("estimatedCostUsd", out var e) ? e.GetDecimal() : 0m;
 
+            var recordLabel = toolName.StartsWith("generate_", StringComparison.OrdinalIgnoreCase)
+                ? "Documents to generate:"
+                : toolName.StartsWith("export_", StringComparison.OrdinalIgnoreCase)
+                    ? "Records to export:    "
+                    : "Records to process:   ";
+
             AnsiConsole.WriteLine();
-            var panel = new Panel(
-                    $"[yellow]Records to process:[/] [bold]{count:N0}[/]\n" +
-                    (cost > 0
-                        ? $"[yellow]Estimated cost:    [/] [bold]${cost:F2} USD[/]"
-                        : "[yellow]Estimated cost:    [/] [bold]$0.00 (free — local model)[/]"))
+            var panelContent = $"[yellow]{recordLabel}[/] [bold]{count:N0}[/]" +
+                (cost > 0 ? $"\n[yellow]Estimated cost:       [/] [bold]${cost:F2} USD[/]" : "");
+            var panel = new Panel(panelContent)
                 .Header("[bold yellow]⚠  Confirmation Required[/]")
                 .BorderColor(Color.Yellow);
             AnsiConsole.Write(panel);
@@ -380,12 +397,16 @@ public sealed class AgenticChatSession
 
             using var batchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+            var actionLabel = toolName.StartsWith("generate_", StringComparison.OrdinalIgnoreCase)
+                ? $"Generating Word documents for [bold]{count:N0}[/] PDs."
+                : toolName.StartsWith("export_", StringComparison.OrdinalIgnoreCase)
+                    ? $"Exporting [bold]{count:N0}[/] records to Excel."
+                    : $"Scoring [bold]{count:N0}[/] PDs.";
+
             AnsiConsole.WriteLine();
             AnsiConsole.Write(new Panel(
-                    $"[grey]Scoring [bold]{count:N0}[/] PDs.\n" +
-                    "Progress updates appear above.\n" +
-                    "Press [bold]Esc[/] to cancel without exiting the CLI.[/]")
-                .Header("[bold cyan]Batch Running[/]")
+                    $"[grey]{actionLabel}\nProgress updates appear above.\nPress [bold]Esc[/] to cancel without exiting the CLI.[/]")
+                .Header("[bold cyan]Running[/]")
                 .BorderColor(Color.Cyan1));
             AnsiConsole.WriteLine();
 
@@ -511,14 +532,14 @@ public sealed class AgenticChatSession
         }
     }
 
-    private static void TryRenderStatusTable(string toolName, string resultJson)
+    private static bool TryRenderStatusTable(string toolName, string resultJson)
     {
         if (!toolName.StartsWith("get_processing_status", StringComparison.OrdinalIgnoreCase))
-            return;
+            return false;
 
         JsonDocument doc;
         try { doc = JsonDocument.Parse(resultJson); }
-        catch { return; }
+        catch { return false; }
 
         using (doc)
         {
@@ -560,7 +581,7 @@ public sealed class AgenticChatSession
 
                 AnsiConsole.WriteLine();
                 AnsiConsole.Write(table);
-                return;
+                return true;
             }
 
             // PD-level: { results: [{ pdNbr, title, orgCode, payPlan, series, grade, status, criteriaMet, rating, score }] }
@@ -623,7 +644,10 @@ public sealed class AgenticChatSession
 
                 AnsiConsole.WriteLine();
                 AnsiConsole.Write(table);
+                return true;
             }
+
+            return false;
         }
     }
 

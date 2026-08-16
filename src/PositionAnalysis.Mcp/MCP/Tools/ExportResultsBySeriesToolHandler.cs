@@ -40,14 +40,15 @@ public class ExportResultsBySeriesToolHandler : IMcpToolHandler
         if (series.Count == 0)
             return new { error = "Missing required parameter: series (array of series codes)" };
 
-        await _exportOrchestrator.ExportBySeriesAsync(series);
-
-        var status = await _exportOrchestrator.GetExportStatusAsync();
-
-        return new
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) && c.GetBoolean();
+        if (!confirmed)
         {
-            total = status.Total,
-            exported = status.Exported
-        };
+            var count = await _exportOrchestrator.CountBySeriesAsync(series);
+            return new { requiresConfirmation = true, pendingCount = count, estimatedCostUsd = 0m };
+        }
+
+        await _exportOrchestrator.ExportBySeriesAsync(series);
+        var status = await _exportOrchestrator.GetExportStatusAsync();
+        return new { total = status.Total, exported = status.Exported };
     }
 }
