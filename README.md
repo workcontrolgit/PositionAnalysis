@@ -60,16 +60,24 @@ cd src/PositionAnalysis.Cli
 dotnet run
 ```
 
-To publish a self-contained build for a server (see the unattended-workers doc for the full
-deployment procedure):
+To publish a deployment build to `C:\deploy` (CLI + MCP + scripts):
 
 ```powershell
-dotnet publish src/PositionAnalysis.Cli/PositionAnalysis.Cli.csproj `
-    -c Release `
-    -r win-x64 `
-    --self-contained `
-    -o D:\deploy\PositionAnalysis
+.\build-deploy.ps1
+# or specify a custom output path:
+.\build-deploy.ps1 -OutputPath D:\releases\positionanalysis
 ```
+
+Output layout:
+
+```
+C:\deploy\
+  cli\                         ← PositionAnalysis.Cli.exe and dependencies
+  cli\PositionAnalysis.Mcp\   ← MCP server (included automatically by CLI publish)
+  scripts\                     ← PowerShell deployment scripts
+```
+
+See the unattended-workers doc for the full server deployment procedure.
 
 ## Configuration
 

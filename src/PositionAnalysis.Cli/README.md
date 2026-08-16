@@ -1,142 +1,69 @@
-# Schedule PC Chat Client
+# PositionAnalysis.Cli
 
-Interactive AI-powered chat client for Schedule Policy/Career position evaluation.
+Interactive AI-powered console client for Schedule Policy/Career position evaluation.
 
-## Features
+Launches `PositionAnalysis.Mcp` as a child process over stdio and drives it through MCP
+tool calls. You never run the MCP server directly.
 
-- **Natural Language Input**: Ask for evaluations in plain English
-- **AI Parameter Parsing**: Uses Azure OpenAI to understand filter intent
-- **Oracle Integration**: Queries Schedule PC data via MCP
-- **Interactive CLI**: Conversational loop with command support
-- **Flexible Filtering**: By series, PD number, org code, or grade
-
-## Example Usage
-
-```
-Schedule PC> evaluate series 0301
-Schedule PC> run by series 0301 and 0905  
-Schedule PC> score pd D01880
-Schedule PC> find grade 15 positions
-Schedule PC> show all positions in org EXEC-POL
-Schedule PC> query grade 13-15
-```
-
-## Setup
-
-### Prerequisites
-
-- .NET 8.0 or later
-- Azure OpenAI credentials
-- Oracle MCP server running (optional - works in AI-only mode if unavailable)
-
-### Installation
-
-1. **Install NuGet Packages**:
-   ```powershell
-   dotnet restore
-   ```
-
-2. **Configure Azure OpenAI**:
-   Set environment variables:
-   ```powershell
-   $env:AZURE_OPENAI_ENDPOINT = "https://your-resource.openai.azure.com/"
-   $env:AZURE_OPENAI_API_KEY = "your-api-key"
-   ```
-
-3. **Build**:
-   ```powershell
-   dotnet build
-   ```
-
-4. **Run**:
-   ```powershell
-   dotnet run
-   ```
-
-## Unattended Scoring
-
-Run the existing Schedule PC scoring queue without starting the interactive chat client:
+## Running
 
 ```powershell
-dotnet run -- --unattended
+# From source
+cd src\PositionAnalysis.Cli
+dotnet run
+
+# From a published build
+.\PositionAnalysis.Cli.exe
 ```
 
-This starts the SchedulePCMcp child process, triggers scoring for all currently queued PDs, and polls the aggregate queue until no work remains. It does not stage PDs, generate documents, or export results.
+## Startup menu
 
-The command exits with code `0` when the queue drains with no failed PDs, `1` when the queue drains with one or more failed PDs, or `2` when the worker is cancelled before normal terminal completion.
-
-## Commands
-
-| Command | Example | Purpose |
-|---------|---------|---------|
-| `series <code>` | `series 0301` | Query by occupational series |
-| `pd <number>` | `pd D01880` | Query specific position |
-| `grade <value>` | `grade 15` | Query by grade |
-| `org <code>` | `org EXEC-POL` | Query by organization |
-| Natural language | `evaluate series 0301` | Use AI to parse intent |
-| `help` | `help` | Show command reference |
-| `exit` / `quit` | `exit` | Exit application |
-
-## Architecture
+The CLI shows a numbered menu on startup. Type a number to activate an option, or type any
+question in plain English. Press `?` to re-display the menu at any time.
 
 ```
-┌─────────────────────────────────────┐
-│  SchedulePCChatClient (Main Loop)  │
-│  - Reads user input                │
-│  - Manages Oracle MCP connection   │
-├─────────────────────────────────────┤
-│  Azure OpenAI Parser               │
-│  - Converts natural language       │
-│  - Extracts filter parameters      │
-├─────────────────────────────────────┤
-│  WHERE Clause Builder              │
-│  - Constructs SQL filters          │
-│  - Handles series/pd/org/grade     │
-├─────────────────────────────────────┤
-│  Oracle MCP Client                 │
-│  - Executes SQL queries            │
-│  - Returns position data           │
-└─────────────────────────────────────┘
+ Report Status          Evaluate               Generate Word
+ 1  All series          5  All pending          9  All
+ 2  By series           6  By series           10  By series
+ 3  By org code         7  By org code         11  By org code
+ 4  By PD number        8  By PD number        12  By PD number
+
+ Export Excel           Manage
+13  All                17  Stage PDs
+14  By series          18  Clear staged PDs
+15  By org code        19  Reset failed → staged
+16  By PD number       20  Run unattended scoring
+                       21  Unattended queue status
+                       22  Re-score by PD number
+                       23  Re-score by series
 ```
 
-## Oracle Query Template
+For full usage instructions see
+[docs/instructions/how-to-positionanalysis-interactive-chat.md](../../docs/instructions/how-to-positionanalysis-interactive-chat.md).
 
-The chat client executes queries against `MAX_PD_VW` with dynamic WHERE clauses:
+## Unattended mode
 
-```sql
-SELECT v.PD_NBR, 
-       v.PD_POSITION_TITLE_TEXT AS TITLE,
-       v.GVT_OCC_SERIES AS SERIES,
-       v.GRD_CODE AS GRADE,
-       v.GVT_PAY_PLAN,
-       v.PD_ORIGIN_ORG_CODE AS ORG_CODE
-FROM MAX_PD_VW v
-WHERE v.PD_ARCHIVE_IND != 'Y'
-  AND v.GVT_PAY_PLAN IN ('GS', 'ES', 'SL', 'ST', 'AD')
-  AND (REGEXP_LIKE(v.GRD_CODE, '^1[3-5]$') OR v.GVT_PAY_PLAN IN ('ES', 'SL', 'ST'))
-{DYNAMIC_WHERE_CLAUSE}
+Run scoring without the interactive chat:
+
+```powershell
+.\PositionAnalysis.Cli.exe --unattended
 ```
 
-## Fallback Mode
+Scores all currently PENDING PDs and exits. Exit codes: `0` = success, `1` = one or more
+failed PDs, `2` = cancelled.
 
-If Oracle MCP is unavailable, the client displays sample results and continues in AI-only mode.
+## Configuration
 
-## Environment Variables
+`appsettings.json` — AI provider for the chat assistant (`AI:*`). Secrets via
+`dotnet user-secrets` (dev) or machine environment variables (server).
 
-| Variable | Default | Required |
-|----------|---------|----------|
-| `AZURE_OPENAI_ENDPOINT` | `https://your-resource.openai.azure.com/` | Yes |
-| `AZURE_OPENAI_API_KEY` | `YOUR_API_KEY` | Yes |
+```powershell
+dotnet user-secrets set "AI:AzureOpenAI:Endpoint"       "https://<resource>.cognitiveservices.azure.com/"
+dotnet user-secrets set "AI:AzureOpenAI:DeploymentName" "<deployment>"
+dotnet user-secrets set "AI:AzureOpenAI:ApiKey"         "<key>"
+```
 
-## Next Steps
+## Purpose
 
-- Add scoring workflow integration (`schedule-pc-eval-score`)
-- Store conversation history for audit trail
-- Add batch evaluation mode
-- Implement result export to Excel
-- Add multi-language support
-
-## Authority
-
-EO "Implementing Schedule Policy/Career in the Excepted Service" (June 3, 2026)  
-Legal Basis: 5 U.S.C. § 7511(b)(2); 5 U.S.C. § 3302
+EO "Implementing Schedule Policy/Career in the Excepted Service" (June 3, 2026)
+Legal basis: 5 U.S.C. § 7511(b)(2); 5 U.S.C. § 3302
