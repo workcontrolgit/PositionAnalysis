@@ -79,6 +79,7 @@ public class Program
                 services.Configure<ExcelExportSettings>(context.Configuration.GetSection("ExcelExport"));
                 services.Configure<McpSettings>(context.Configuration.GetSection("MCP"));
                 services.Configure<RatingThresholdSettings>(context.Configuration.GetSection("RatingThresholds"));
+                services.Configure<CostGateSettings>(context.Configuration.GetSection("CostGate"));
 
                 // Some services require the concrete settings object, not only IOptions<T>.
                 services.AddSingleton(sp =>
@@ -129,6 +130,7 @@ public class Program
                 services.AddScoped<IDocumentGenerationOrchestrator, DocumentGenerationOrchestrator>();
                 services.AddScoped<IExportOrchestrator, ExportOrchestrator>();
                 services.AddSingleton<ProcessAllRunStatusService>();
+                services.AddSingleton<ICostGateService, CostGateService>();
 
                 // MCP Infrastructure
                 // StdioChannel must be Singleton: it owns the SemaphoreSlim that

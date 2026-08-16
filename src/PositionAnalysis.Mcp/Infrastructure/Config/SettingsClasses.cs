@@ -147,3 +147,18 @@ public class OutputSettings
         return logsDir;
     }
 }
+
+/// <summary>
+/// Controls whether expensive LLM batch operations require explicit user confirmation.
+/// </summary>
+public class CostGateSettings
+{
+    /// <summary>Estimated USD cost per PD scored. Used to compute total before gating.</summary>
+    public decimal EstimatedCostPerPdUsd { get; set; } = 0.05m;
+
+    /// <summary>
+    /// Operations whose estimated cost exceeds this value require <c>confirmed: true</c>
+    /// before running. Set to 0 to gate every call; set to a very large number to disable.
+    /// </summary>
+    public decimal ThresholdUsd { get; set; } = 5.00m;
+}
