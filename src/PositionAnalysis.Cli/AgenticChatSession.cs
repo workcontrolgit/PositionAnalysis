@@ -362,17 +362,23 @@ public sealed class AgenticChatSession
             if (!root.TryGetProperty("requiresConfirmation", out var flag) || !flag.GetBoolean())
                 return resultJson;
 
-            var count = root.TryGetProperty("pendingCount", out var c) ? c.GetInt32() : 0;
+            var hasCount = root.TryGetProperty("pendingCount", out var countEl);
+            var count = hasCount ? countEl.GetInt32() : 0;
             var cost  = root.TryGetProperty("estimatedCostUsd", out var e) ? e.GetDecimal() : 0m;
 
             var recordLabel = toolName.StartsWith("generate_", StringComparison.OrdinalIgnoreCase)
                 ? "Documents to generate:"
                 : toolName.StartsWith("export_", StringComparison.OrdinalIgnoreCase)
                     ? "Records to export:    "
-                    : "Records to process:   ";
+                    : toolName == "stage_pds_clear"
+                        ? "Records to delete:    "
+                        : toolName == "reset_failed_to_staged"
+                            ? "Failed records:       "
+                            : "Records to process:   ";
 
             AnsiConsole.WriteLine();
-            var panelContent = $"[yellow]{recordLabel}[/] [bold]{count:N0}[/]" +
+            var countLine = hasCount ? $"[yellow]{recordLabel}[/] [bold]{count:N0}[/]" : "[yellow]This action cannot be undone.[/]";
+            var panelContent = countLine +
                 (cost > 0 ? $"\n[yellow]Estimated cost:       [/] [bold]${cost:F2} USD[/]" : "");
             var panel = new Panel(panelContent)
                 .Header("[bold yellow]⚠  Confirmation Required[/]")
