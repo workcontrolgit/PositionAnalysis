@@ -1,21 +1,24 @@
 ﻿using System.Text.Json;
 using PositionAnalysis.Mcp.Application.Interfaces;
 using PositionAnalysis.Mcp.Domain.ValueObjects;
+using PositionAnalysis.Mcp.Infrastructure.Repositories;
 
 namespace PositionAnalysis.Mcp.MCP.Tools;
 
 public class StagePdsToolHandler : IMcpToolHandler
 {
     private readonly IStagingOrchestrator _stagingOrchestrator;
+    private readonly IPositionAnalysisEvalRepository _evalRepository;
 
-    public StagePdsToolHandler(IStagingOrchestrator stagingOrchestrator)
+    public StagePdsToolHandler(IStagingOrchestrator stagingOrchestrator, IPositionAnalysisEvalRepository evalRepository)
     {
         _stagingOrchestrator = stagingOrchestrator;
+        _evalRepository = evalRepository;
     }
 
     public string Name => "stage_pds";
 
-    public string Description => "Stage position descriptions from Oracle into SCHEDULE_PC_EVAL for evaluation. Returns a requiresConfirmation payload first — re-call with confirmed: true to proceed.";
+    public string Description => "Add new position descriptions from the Oracle source into SCHEDULE_PC_EVAL for evaluation (add-only, does not delete existing records). Returns a requiresConfirmation payload first — re-call with confirmed: true to proceed.";
 
     public object InputSchema => new
     {
@@ -33,9 +36,6 @@ public class StagePdsToolHandler : IMcpToolHandler
         var confirmed = arguments.TryGetProperty("confirmed", out var c) &&
                         c.ValueKind == JsonValueKind.True;
 
-        if (!confirmed)
-            return new { requiresConfirmation = true, estimatedCostUsd = 0m };
-
         var series = arguments.GetStringOrNull("series");
         var orgCode = arguments.GetStringOrNull("orgCode");
 
@@ -44,6 +44,12 @@ public class StagePdsToolHandler : IMcpToolHandler
             new Grade(15),
             !string.IsNullOrWhiteSpace(series) ? new OccupationalSeries(series) : null,
             orgCode);
+
+        if (!confirmed)
+        {
+            var newCount = await _evalRepository.CountNewToStageAsync(filter);
+            return new { requiresConfirmation = true, pendingCount = newCount, estimatedCostUsd = 0m };
+        }
 
         var result = await _stagingOrchestrator.StageAsync(filter);
 

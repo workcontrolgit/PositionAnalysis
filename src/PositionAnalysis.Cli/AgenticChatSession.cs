@@ -374,11 +374,12 @@ public sealed class AgenticChatSession
                         ? "Records to delete:    "
                         : toolName == "reset_failed_to_staged"
                             ? "Failed records:       "
-                            : "Records to process:   ";
+                            : toolName == "stage_pds"
+                                ? "Records to stage:     "
+                                : "Records to process:   ";
 
             AnsiConsole.WriteLine();
-            var countLine = hasCount ? $"[yellow]{recordLabel}[/] [bold]{count:N0}[/]" : "[yellow]This action cannot be undone.[/]";
-            var panelContent = countLine +
+            var panelContent = $"[yellow]{recordLabel}[/] [bold]{count:N0}[/]" +
                 (cost > 0 ? $"\n[yellow]Estimated cost:       [/] [bold]${cost:F2} USD[/]" : "");
             var panel = new Panel(panelContent)
                 .Header("[bold yellow]⚠  Confirmation Required[/]")

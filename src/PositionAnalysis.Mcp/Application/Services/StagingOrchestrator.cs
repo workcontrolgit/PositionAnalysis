@@ -39,9 +39,6 @@ public class StagingOrchestrator : IStagingOrchestrator
         {
             _logger.LogInformation("Starting staging with filter: {Filter}", filter);
 
-            var deletedCount = await _evalRepository.DeleteAllAsync();
-            _logger.LogInformation("Cleared {DeletedCount} existing evaluation rows", deletedCount);
-
             var result = await _evalRepository.StageFromMaxPdAsync(filter);
 
             var stagingDuration = DateTime.Now - stagingStarted;
