@@ -17,15 +17,18 @@ public class McpStdioServer : BackgroundService
 
     private readonly McpToolsProvider _toolsProvider;
     private readonly StdioChannel _channel;
+    private readonly IHostApplicationLifetime _lifetime;
     private readonly ILogger<McpStdioServer> _logger;
 
     public McpStdioServer(
         McpToolsProvider toolsProvider,
         StdioChannel channel,
+        IHostApplicationLifetime lifetime,
         ILogger<McpStdioServer> logger)
     {
         _toolsProvider = toolsProvider;
         _channel = channel;
+        _lifetime = lifetime;
         _logger = logger;
     }
 
@@ -46,7 +49,12 @@ public class McpStdioServer : BackgroundService
             }
 
             if (line == null)
+            {
+                // stdin closed — the client process has exited; shut down this server.
+                _logger.LogInformation("stdin closed — stopping MCP server");
+                _lifetime.StopApplication();
                 break;
+            }
 
             if (string.IsNullOrWhiteSpace(line))
                 continue;

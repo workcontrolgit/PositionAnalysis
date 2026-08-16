@@ -1,4 +1,5 @@
 // src/PositionAnalysis.Cli/AgenticChatSession.cs
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Serilog;
 using Spectre.Console;
@@ -16,9 +17,8 @@ public sealed class AgenticChatSession
         "Policy/Career authority. You have access to tools for staging, scoring, generating " +
         "evaluation documents, exporting results, and querying the Oracle database. " +
         "Call tools when the user requests workflow actions. " +
-        "For expensive batch operations the tool returns a requiresConfirmation payload with " +
-        "an estimated cost — tell the user the cost and ask them to confirm before re-calling " +
-        "with { \"confirmed\": true }.";
+        "Cost-gate confirmations are handled automatically by the CLI — you do not need to ask " +
+        "the user to confirm or re-call tools with confirmed:true.";
 
     private readonly IChatClient _chatClient;
     private readonly McpToolRegistry _registry;
@@ -117,10 +117,11 @@ public sealed class AgenticChatSession
                 string resultJson;
                 try
                 {
-                    resultJson = await _registry.CallToolAsync(
-                        call.Name,
-                        new Dictionary<string, object?>(call.Arguments ?? new Dictionary<string, object?>()),
-                        cancellationToken);
+                    var args = new Dictionary<string, object?>(call.Arguments ?? new Dictionary<string, object?>());
+                    resultJson = await _registry.CallToolAsync(call.Name, args, cancellationToken);
+
+                    // Intercept cost-gate confirmation before the LLM sees it
+                    resultJson = await HandleCostGateAsync(call.Name, args, resultJson, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -134,6 +135,65 @@ public sealed class AgenticChatSession
 
             _history.Add(resultMessage);
             // Loop: feed results back to the LLM for its next response
+        }
+    }
+
+    /// <summary>
+    /// If <paramref name="resultJson"/> is a cost-gate payload, shows a 1/2 confirmation prompt
+    /// and either re-calls the tool with confirmed:true or returns a cancellation message.
+    /// Otherwise returns <paramref name="resultJson"/> unchanged.
+    /// </summary>
+    private async Task<string> HandleCostGateAsync(
+        string toolName,
+        Dictionary<string, object?> originalArgs,
+        string resultJson,
+        CancellationToken cancellationToken)
+    {
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(resultJson); }
+        catch { return resultJson; }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("requiresConfirmation", out var flag) || !flag.GetBoolean())
+                return resultJson;
+
+            var count = root.TryGetProperty("pendingCount", out var c) ? c.GetInt32() : 0;
+            var cost  = root.TryGetProperty("estimatedCostUsd", out var e) ? e.GetDecimal() : 0m;
+
+            AnsiConsole.WriteLine();
+            var panel = new Panel(
+                    $"[yellow]Records to process:[/] [bold]{count:N0}[/]\n" +
+                    (cost > 0
+                        ? $"[yellow]Estimated cost:    [/] [bold]${cost:F2} USD[/]"
+                        : "[yellow]Estimated cost:    [/] [bold]$0.00 (free — local model)[/]"))
+                .Header("[bold yellow]⚠  Confirmation Required[/]")
+                .BorderColor(Color.Yellow);
+            AnsiConsole.Write(panel);
+
+            AnsiConsole.MarkupLine("  [bold]1[/] — Yes, proceed");
+            AnsiConsole.MarkupLine("  [bold]2[/] — No, cancel");
+            AnsiConsole.WriteLine();
+
+            string? choice;
+            do
+            {
+                AnsiConsole.Markup("[bold yellow]Enter choice (1 or 2):[/] ");
+                choice = Console.ReadLine()?.Trim();
+            }
+            while (choice is not "1" and not "2");
+
+            if (choice == "2")
+            {
+                AnsiConsole.MarkupLine("[grey]Cancelled.[/]");
+                return "{\"cancelled\":true,\"message\":\"User cancelled the batch operation.\"}";
+            }
+
+            // User confirmed — re-call the tool with confirmed:true
+            AnsiConsole.MarkupLine($"[grey]  → re-calling [bold]{Markup.Escape(toolName)}[/] (confirmed)…[/]");
+            var confirmedArgs = new Dictionary<string, object?>(originalArgs) { ["confirmed"] = true };
+            return await _registry.CallToolAsync(toolName, confirmedArgs, cancellationToken);
         }
     }
 
