@@ -25,8 +25,6 @@ public class StagePdsToolHandler : IMcpToolHandler
         type = "object",
         properties = new
         {
-            series = new { type = "string", description = "5-digit occupational series" },
-            orgCode = new { type = "string" },
             confirmed = new { type = "boolean", description = "Set to true to approve staging." }
         }
     };
@@ -36,14 +34,7 @@ public class StagePdsToolHandler : IMcpToolHandler
         var confirmed = arguments.TryGetProperty("confirmed", out var c) &&
                         c.ValueKind == JsonValueKind.True;
 
-        var series = arguments.GetStringOrNull("series");
-        var orgCode = arguments.GetStringOrNull("orgCode");
-
-        var filter = new StagingFilter(
-            new Grade(13),
-            new Grade(15),
-            !string.IsNullOrWhiteSpace(series) ? new OccupationalSeries(series) : null,
-            orgCode);
+        var filter = new StagingFilter(new Grade(13), new Grade(15), null, null);
 
         if (!confirmed)
         {
