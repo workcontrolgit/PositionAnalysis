@@ -1,32 +1,27 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PositionAnalysis.Mcp.Application.Interfaces;
 using PositionAnalysis.Mcp.Infrastructure.Repositories;
 
 namespace PositionAnalysis.Mcp.MCP.Tools;
 
-/// <summary>
-/// MCP tool: score ALL pending PDs globally in parallel with progress.
-/// Tool name: process_batch_all
-///
-/// Fetches every row with Rating = 'PENDING' from SCHEDULE_PC_EVAL,
-/// then runs the 10-way parallel scoring loop with live progress notifications.
-/// Unlike run_unattended_scoring (fire-and-forget), this tool is synchronous:
-/// the response arrives only after all PDs have been scored.
-/// </summary>
 public sealed class ProcessBatchToolHandler : IMcpStreamingToolHandler
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ParallelBatchScorer _scorer;
+    private readonly ICostGateService _costGate;
     private readonly ILogger<ProcessBatchToolHandler> _logger;
 
     public ProcessBatchToolHandler(
         IServiceScopeFactory scopeFactory,
         ParallelBatchScorer scorer,
+        ICostGateService costGate,
         ILogger<ProcessBatchToolHandler> logger)
     {
         _scopeFactory = scopeFactory;
         _scorer = scorer;
+        _costGate = costGate;
         _logger = logger;
     }
 
@@ -34,12 +29,20 @@ public sealed class ProcessBatchToolHandler : IMcpStreamingToolHandler
 
     public string Description =>
         "Score ALL pending PDs globally in parallel (10-way concurrency) with live progress notifications. " +
-        "Synchronous: the response arrives after all PDs complete.";
+        "Synchronous: the response arrives after all PDs complete. " +
+        "When estimated cost exceeds the threshold, returns a requiresConfirmation payload — re-call with confirmed: true to proceed.";
 
     public object InputSchema => new
     {
         type = "object",
-        properties = new { }
+        properties = new
+        {
+            confirmed = new
+            {
+                type = "boolean",
+                description = "Set to true to approve execution when the cost gate requires confirmation."
+            }
+        }
     };
 
     public Task<object> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -51,7 +54,9 @@ public sealed class ProcessBatchToolHandler : IMcpStreamingToolHandler
         Func<double, double, Task>? reportProgressAsync,
         CancellationToken cancellationToken)
     {
-        // Fetch all pending PD numbers upfront in a short-lived scope.
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) &&
+                        c.ValueKind == JsonValueKind.True;
+
         List<string> pendingPdNbrs;
         await using (var scope = _scopeFactory.CreateAsyncScope())
         {
@@ -61,6 +66,24 @@ public sealed class ProcessBatchToolHandler : IMcpStreamingToolHandler
                 .Where(r => r.Rating == "PENDING")
                 .Select(r => r.PdNbr)
                 .ToList();
+        }
+
+        if (!confirmed)
+        {
+            var estimatedCost = _costGate.Estimate(pendingPdNbrs.Count);
+            if (_costGate.RequiresConfirmation(estimatedCost))
+            {
+                _logger.LogInformation(
+                    "process_batch_all: cost gate triggered for {Count} PDs (est. ${Cost:F2})",
+                    pendingPdNbrs.Count, estimatedCost);
+                return new
+                {
+                    requiresConfirmation = true,
+                    pendingCount = pendingPdNbrs.Count,
+                    estimatedCostUsd = estimatedCost,
+                    thresholdUsd = _costGate.ThresholdUsd
+                };
+            }
         }
 
         _logger.LogInformation("process_batch_all: {Count} pending PDs found globally", pendingPdNbrs.Count);

@@ -1,38 +1,36 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PositionAnalysis.Mcp.Application.Interfaces;
 using PositionAnalysis.Mcp.Domain.ValueObjects;
 using PositionAnalysis.Mcp.Infrastructure.Repositories;
 
 namespace PositionAnalysis.Mcp.MCP.Tools;
 
-/// <summary>
-/// MCP tool: score all pending PDs in specified series in parallel with progress.
-/// Tool name: process_batch_by_series
-///
-/// Fetches every PENDING row for the given series codes, then runs the
-/// 10-way parallel scoring loop with live progress notifications.
-/// </summary>
 public sealed class ProcessBatchBySeriesToolHandler : IMcpStreamingToolHandler
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ParallelBatchScorer _scorer;
+    private readonly ICostGateService _costGate;
     private readonly ILogger<ProcessBatchBySeriesToolHandler> _logger;
 
     public ProcessBatchBySeriesToolHandler(
         IServiceScopeFactory scopeFactory,
         ParallelBatchScorer scorer,
+        ICostGateService costGate,
         ILogger<ProcessBatchBySeriesToolHandler> logger)
     {
         _scopeFactory = scopeFactory;
         _scorer = scorer;
+        _costGate = costGate;
         _logger = logger;
     }
 
     public string Name => "process_batch_by_series";
 
     public string Description =>
-        "Score all pending PDs in the specified series in parallel (10-way concurrency) with live progress notifications.";
+        "Score all pending PDs in the specified series in parallel (10-way concurrency) with live progress notifications. " +
+        "When estimated cost exceeds the threshold, returns a requiresConfirmation payload — re-call with confirmed: true to proceed.";
 
     public object InputSchema => new
     {
@@ -45,6 +43,11 @@ public sealed class ProcessBatchBySeriesToolHandler : IMcpStreamingToolHandler
                 type = "array",
                 items = new { type = "string" },
                 description = "Occupational series codes (5-digit strings, e.g. [\"00301\",\"00560\"])."
+            },
+            confirmed = new
+            {
+                type = "boolean",
+                description = "Set to true to approve execution when the cost gate requires confirmation."
             }
         }
     };
@@ -65,12 +68,13 @@ public sealed class ProcessBatchBySeriesToolHandler : IMcpStreamingToolHandler
             return new { total = 0, completed = 0, failed = 0, message = "No series codes provided." };
         }
 
-        // Fetch pending PD numbers for all requested series upfront.
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) &&
+                        c.ValueKind == JsonValueKind.True;
+
         var pendingPdNbrs = new List<string>();
         await using (var scope = _scopeFactory.CreateAsyncScope())
         {
             var evalRepo = scope.ServiceProvider.GetRequiredService<IPositionAnalysisEvalRepository>();
-
             foreach (var code in seriesCodes)
             {
                 try
@@ -83,6 +87,24 @@ public sealed class ProcessBatchBySeriesToolHandler : IMcpStreamingToolHandler
                 {
                     _logger.LogWarning("Skipping invalid series code '{Code}': {Message}", code, ex.Message);
                 }
+            }
+        }
+
+        if (!confirmed)
+        {
+            var estimatedCost = _costGate.Estimate(pendingPdNbrs.Count);
+            if (_costGate.RequiresConfirmation(estimatedCost))
+            {
+                _logger.LogInformation(
+                    "process_batch_by_series: cost gate triggered for {Count} PDs (est. ${Cost:F2})",
+                    pendingPdNbrs.Count, estimatedCost);
+                return new
+                {
+                    requiresConfirmation = true,
+                    pendingCount = pendingPdNbrs.Count,
+                    estimatedCostUsd = estimatedCost,
+                    thresholdUsd = _costGate.ThresholdUsd
+                };
             }
         }
 

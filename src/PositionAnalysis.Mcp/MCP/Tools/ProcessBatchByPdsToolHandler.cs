@@ -1,27 +1,30 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using PositionAnalysis.Mcp.Application.Interfaces;
 
 namespace PositionAnalysis.Mcp.MCP.Tools;
 
-/// <summary>
-/// MCP tool: score an explicit list of PD numbers in parallel with progress.
-/// Tool name: process_batch_by_pds
-/// </summary>
 public sealed class ProcessBatchByPdsToolHandler : IMcpStreamingToolHandler
 {
     private readonly ParallelBatchScorer _scorer;
+    private readonly ICostGateService _costGate;
     private readonly ILogger<ProcessBatchByPdsToolHandler> _logger;
 
-    public ProcessBatchByPdsToolHandler(ParallelBatchScorer scorer, ILogger<ProcessBatchByPdsToolHandler> logger)
+    public ProcessBatchByPdsToolHandler(
+        ParallelBatchScorer scorer,
+        ICostGateService costGate,
+        ILogger<ProcessBatchByPdsToolHandler> logger)
     {
         _scorer = scorer;
+        _costGate = costGate;
         _logger = logger;
     }
 
     public string Name => "process_batch_by_pds";
 
     public string Description =>
-        "Score an explicit list of PD numbers in parallel (10-way concurrency) with live progress notifications.";
+        "Score an explicit list of PD numbers in parallel (10-way concurrency) with live progress notifications. " +
+        "When estimated cost exceeds the threshold, returns a requiresConfirmation payload — re-call with confirmed: true to proceed.";
 
     public object InputSchema => new
     {
@@ -34,6 +37,11 @@ public sealed class ProcessBatchByPdsToolHandler : IMcpStreamingToolHandler
                 type = "array",
                 items = new { type = "string" },
                 description = "PD numbers to score."
+            },
+            confirmed = new
+            {
+                type = "boolean",
+                description = "Set to true to approve execution when the cost gate requires confirmation."
             }
         }
     };
@@ -53,6 +61,27 @@ public sealed class ProcessBatchByPdsToolHandler : IMcpStreamingToolHandler
         {
             _logger.LogWarning("process_batch_by_pds called with no PD numbers");
             return new { total = 0, completed = 0, failed = 0, message = "No PD numbers provided." };
+        }
+
+        var confirmed = arguments.TryGetProperty("confirmed", out var c) &&
+                        c.ValueKind == JsonValueKind.True;
+
+        if (!confirmed)
+        {
+            var estimatedCost = _costGate.Estimate(pdNbrs.Count);
+            if (_costGate.RequiresConfirmation(estimatedCost))
+            {
+                _logger.LogInformation(
+                    "process_batch_by_pds: cost gate triggered for {Count} PDs (est. ${Cost:F2})",
+                    pdNbrs.Count, estimatedCost);
+                return new
+                {
+                    requiresConfirmation = true,
+                    pendingCount = pdNbrs.Count,
+                    estimatedCostUsd = estimatedCost,
+                    thresholdUsd = _costGate.ThresholdUsd
+                };
+            }
         }
 
         _logger.LogInformation("process_batch_by_pds: {Count} PDs submitted", pdNbrs.Count);
