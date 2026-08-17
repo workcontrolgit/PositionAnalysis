@@ -345,10 +345,9 @@ public class DocumentGenerationOrchestrator : IDocumentGenerationOrchestrator
                 failureCount++;
                 _logger.LogError(
                     ex,
-                    "I/O error while generating document for PD {PdNbr} to {OutputPath}",
+                    "I/O error while generating document for PD {PdNbr} to {OutputPath}. Likely a transient file lock (e.g. the file is open in Word); the evaluation record is left untouched so it can be retried.",
                     result.PdNbr,
                     outputFilePath);
-                await MarkGenerationFailedAsync(result, ex.Message);
             }
             catch (Exception ex)
             {

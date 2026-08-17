@@ -775,7 +775,15 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
             {
                 var parsed = JsonSerializer.Deserialize<EvaluationResult>(resultJson);
                 if (parsed is not null)
+                {
+                    // rating/is_candidate columns are the source of truth (rebucket_ratings updates
+                    // only these columns, not the embedded JSON), so they override the stale JSON copy.
+                    if (!reader.IsDBNull(4))
+                        parsed.Rating = reader.GetValue(4).ToString() ?? parsed.Rating;
+                    if (!reader.IsDBNull(5))
+                        parsed.IsCandidate = string.Equals(reader.GetValue(5).ToString(), "Y", StringComparison.OrdinalIgnoreCase);
                     return parsed;
+                }
             }
         }
 
