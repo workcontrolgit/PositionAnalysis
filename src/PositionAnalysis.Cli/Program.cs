@@ -153,9 +153,11 @@ try
     var modelDisplay = GetModelDisplay(configuration, provider);
 
     var oracleConnectionName = configuration["SqlclMcp:ConnectionName"];
+    var maxDisplayRows = int.TryParse(configuration["SqlclMcp:MaxDisplayRows"], out var n) ? n : 50;
 
     var session = new AgenticChatSession(chatClient, registry, modelDisplay,
         oracleConnectionName: oracleConnectionName,
+        maxDisplayRows: maxDisplayRows,
         setSuppressProgress: v => { suppressProgress = v; if (!v) lastPct = -1; });
 
     await session.RunAsync(interactiveCts.Token);

@@ -19,22 +19,25 @@ public sealed class AgenticChatSession
     private readonly McpToolRegistry _registry;
     private readonly string _modelName;
     private readonly string? _oracleConnectionName;
+    private readonly int _maxDisplayRows;
     private readonly List<ChatMessage> _history;
     private readonly Action<bool>? _setSuppressProgress;
 
     public AgenticChatSession(IChatClient chatClient, McpToolRegistry registry, string modelName,
         string? oracleConnectionName = null,
+        int maxDisplayRows = 50,
         Action<bool>? setSuppressProgress = null)
     {
         _chatClient = chatClient;
         _registry = registry;
         _modelName = modelName;
         _oracleConnectionName = oracleConnectionName;
-        _history = [new ChatMessage(ChatRole.System, BuildSystemPrompt(oracleConnectionName))];
+        _maxDisplayRows = maxDisplayRows;
+        _history = [new ChatMessage(ChatRole.System, BuildSystemPrompt(oracleConnectionName, maxDisplayRows))];
         _setSuppressProgress = setSuppressProgress;
     }
 
-    private static string BuildSystemPrompt(string? oracleConnectionName)
+    private static string BuildSystemPrompt(string? oracleConnectionName, int maxDisplayRows)
     {
         var base_ =
             "You are PositionAnalysis Assistant, helping evaluate federal positions under Schedule " +
@@ -50,7 +53,8 @@ public sealed class AgenticChatSession
         if (!string.IsNullOrWhiteSpace(oracleConnectionName))
             base_ += $" When querying Oracle (sql_run, schema_information, connect), always use connection \"{oracleConnectionName}\" — never ask the user which connection to use." +
                      " The schema_information tool does not work in this environment (annotation metadata unavailable)." +
-                     $" For schema/column questions, use sql_run with: SELECT column_name, data_type, data_length, nullable, data_default FROM user_tab_columns WHERE table_name = UPPER('<table>') ORDER BY column_id";
+                     $" For schema/column questions, use sql_run with: SELECT column_name, data_type, data_length, nullable, data_default FROM user_tab_columns WHERE table_name = UPPER('<table>') ORDER BY column_id." +
+                     $" When listing table rows, always add FETCH FIRST {maxDisplayRows} ROWS ONLY to the SQL unless the user explicitly asks for more.";
 
         return base_;
     }
@@ -170,7 +174,9 @@ public sealed class AgenticChatSession
                     "[bold]20[/] Run unattended scoring\n" +
                     "[bold]21[/] Unattended queue status\n" +
                     "[bold]22[/] Re-score by PD number\n" +
-                    "[bold]23[/] Re-score by series")
+                    "[bold]23[/] Re-score by series\n" +
+                    "[bold]24[/] Rebucket ratings (all)\n" +
+                    "[bold]25[/] Rebucket ratings by series")
                 .Header("[bold blue] Manage [/]")
                 .BorderColor(Color.Blue)
                 .Padding(1, 0),
@@ -240,6 +246,9 @@ public sealed class AgenticChatSession
                         v => $"Re-score PD numbers {v}."),
             "23" => PromptParam("Series codes to re-score (comma-separated, e.g. 00301,00560)",
                         v => $"Re-score all PDs in series {v}."),
+            "24" => "Rebucket ratings for all evaluated PDs using current thresholds.",
+            "25" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
+                        v => $"Rebucket ratings for series {v} using current thresholds."),
 
             // ── Free-text or unknown ──────────────────────────────────────────────
             _ when input.All(char.IsDigit) => null, // numeric but not a valid menu item
@@ -328,7 +337,7 @@ public sealed class AgenticChatSession
                         resultJson = "{\"error\":\"schema_information unavailable\",\"action\":\"Use sql_run with: SELECT column_name, data_type, data_length, nullable, data_default FROM user_tab_columns WHERE table_name = UPPER('<table>') ORDER BY column_id\"}";
 
                     // Render status/Oracle results as a table; replace JSON so LLM doesn't re-narrate
-                    if (TryRenderStatusTable(call.Name, resultJson) || TryRenderOracleSqlTable(call.Name, resultJson))
+                    if (TryRenderStatusTable(call.Name, resultJson) || TryRenderOracleSqlTable(call.Name, resultJson, _maxDisplayRows))
                         resultJson = "{\"displayed\":true,\"message\":\"Results shown in table above.\"}";
                     else if (TryRenderConnectionsList(call.Name, resultJson, out var listedConns))
                         resultJson = $"{{\"displayed\":true,\"availableConnections\":[{string.Join(",", listedConns.Select(n => $"\"{n}\""))}],\"message\":\"Use one of these exact names when calling connect.\"}}";
@@ -748,59 +757,74 @@ public sealed class AgenticChatSession
         }
     }
 
-    private static bool TryRenderOracleSqlTable(string toolName, string resultText)
+    private static bool TryRenderOracleSqlTable(string toolName, string resultText, int maxDisplayRows = 50)
     {
         if (!toolName.Equals("sql_run", StringComparison.OrdinalIgnoreCase) &&
             !toolName.Equals("run-sql", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // SQLcl MCP returns CSV: first line is quoted headers, subsequent lines are data rows.
-        var lines = resultText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (lines.Length < 2)
+        // Parse CSV rows properly — quoted fields may contain embedded newlines.
+        var rows = ParseCsvRows(resultText);
+        if (rows.Count < 2)
             return false;
 
-        var headers = ParseCsvLine(lines[0]);
+        var headers = rows[0];
         if (headers.Count == 0)
             return false;
+
+        var dataRows = rows.Skip(1).ToList();
+        var totalRows = dataRows.Count;
+        var truncated = totalRows > maxDisplayRows;
+        var displayRows = truncated ? dataRows.Take(maxDisplayRows) : dataRows;
 
         var table = new Table().Border(TableBorder.Rounded);
         foreach (var h in headers)
             table.AddColumn($"[grey]{Markup.Escape(h)}[/]");
 
-        var dataRows = 0;
-        foreach (var line in lines.Skip(1))
+        var rendered = 0;
+        foreach (var row in displayRows)
         {
-            var cells = ParseCsvLine(line);
-            // Pad or trim to header count
-            while (cells.Count < headers.Count) cells.Add("");
-            table.AddRow(cells.Take(headers.Count)
-                              .Select(c => string.IsNullOrEmpty(c) ? "[grey]—[/]" : Markup.Escape(c))
-                              .ToArray());
-            dataRows++;
+            var cells = headers.Select((_, i) =>
+            {
+                var val = i < row.Count ? row[i] : "";
+                if (string.IsNullOrEmpty(val)) return "[grey]—[/]";
+                // Collapse embedded newlines and truncate long values for display
+                var flat = val.Replace("\r\n", " ").Replace('\n', ' ').Replace('\r', ' ');
+                return flat.Length > 80 ? Markup.Escape(flat[..77]) + "[grey]…[/]" : Markup.Escape(flat);
+            }).ToArray();
+            table.AddRow(cells);
+            rendered++;
         }
 
         AnsiConsole.WriteLine();
         AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine($"[grey]{dataRows} row(s)[/]");
+        if (truncated)
+            AnsiConsole.MarkupLine($"[grey]{rendered} of {totalRows} row(s) shown (limit: {maxDisplayRows})[/]");
+        else
+            AnsiConsole.MarkupLine($"[grey]{rendered} row(s)[/]");
         return true;
     }
 
-    /// <summary>Parses one CSV line, handling quoted fields that may contain commas.</summary>
-    private static List<string> ParseCsvLine(string line)
+    /// <summary>
+    /// Splits a CSV string into rows, correctly handling quoted fields that contain
+    /// embedded commas or newlines.
+    /// </summary>
+    private static List<List<string>> ParseCsvRows(string text)
     {
-        var fields = new List<string>();
-        var current = new System.Text.StringBuilder();
+        var rows = new List<List<string>>();
+        var currentField = new System.Text.StringBuilder();
+        var currentRow = new List<string>();
         bool inQuotes = false;
 
-        for (int i = 0; i < line.Length; i++)
+        for (int i = 0; i < text.Length; i++)
         {
-            char c = line[i];
+            char c = text[i];
             if (c == '"')
             {
-                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                if (inQuotes && i + 1 < text.Length && text[i + 1] == '"')
                 {
-                    current.Append('"');
-                    i++; // skip escaped quote
+                    currentField.Append('"');
+                    i++;
                 }
                 else
                 {
@@ -809,17 +833,32 @@ public sealed class AgenticChatSession
             }
             else if (c == ',' && !inQuotes)
             {
-                fields.Add(current.ToString());
-                current.Clear();
+                currentRow.Add(currentField.ToString());
+                currentField.Clear();
+            }
+            else if ((c == '\n' || c == '\r') && !inQuotes)
+            {
+                if (c == '\r' && i + 1 < text.Length && text[i + 1] == '\n') i++; // skip \r\n
+                currentRow.Add(currentField.ToString());
+                currentField.Clear();
+                if (currentRow.Any(f => !string.IsNullOrWhiteSpace(f)))
+                    rows.Add(currentRow);
+                currentRow = [];
             }
             else
             {
-                current.Append(c);
+                currentField.Append(c);
             }
         }
-        fields.Add(current.ToString());
-        return fields;
+
+        // Flush last field/row
+        currentRow.Add(currentField.ToString());
+        if (currentRow.Any(f => !string.IsNullOrWhiteSpace(f)))
+            rows.Add(currentRow);
+
+        return rows;
     }
+
 
     private static bool IsCancelledResult(string json)
     {
