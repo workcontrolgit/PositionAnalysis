@@ -49,6 +49,8 @@ When the CLI starts it displays a numbered menu:
                        21  Unattended status    Q  — quit
                        22  Re-score by PD
                        23  Re-score by series
+                       24  Rebucket ratings (all)
+                       25  Rebucket ratings by series
 ```
 
 Type a number to activate that option. For options that require parameters (series codes,
@@ -90,6 +92,7 @@ numbers. Examples:
 | Processing status | `status`, `status for series 0301`, `status pd D01880` |
 | Evaluate (score) PDs | `process series 0301, 0560`, `process pd D01880`, `evaluate all` |
 | Re-score PDs | `re-score pd 200028`, `re-score series 00301` |
+| Rebucket ratings | `rebucket ratings`, `rebucket ratings for series 0301` |
 | Reset failed PDs | `reset failed pds to staged` |
 | Generate Word documents | `generate documents`, `generate docs for series 0301` |
 | Export to Excel | `export results`, `export results for pd D01880` |
@@ -104,6 +107,30 @@ their scores are never overwritten. This means you can safely stage new series o
 added PDs without disturbing in-progress or completed evaluations.
 
 To wipe the staging table entirely, use **18 — Clear staged PDs**.
+
+## Rebucketing ratings
+
+**24 — Rebucket ratings (all)** and **25 — Rebucket ratings by series** re-derive the
+HIGH/MEDIUM/LOW rating for every already-scored PD using the current thresholds in
+`PositionAnalysis.Mcp/appsettings.json`:
+
+```json
+"RatingThresholds": {
+  "HighMinCriteriaTriggered": 3,
+  "MediumMinCriteriaTriggered": 1
+}
+```
+
+| Criteria triggered | Rating |
+|--------------------|--------|
+| ≥ 3 | HIGH |
+| 1–2 | MEDIUM |
+| 0 | LOW |
+
+No LLM call is made — the stored criteria trigger flags are already in the database.
+Use this after changing the threshold values without needing to re-run the expensive
+LLM scoring. Restart the MCP server after editing `appsettings.json` for the new
+thresholds to take effect.
 
 ## MCP tools reference
 
@@ -133,6 +160,7 @@ To wipe the staging table entirely, use **18 — Clear staged PDs**.
 | `export_results_by_orgs` | Export results filtered to the given org codes |
 | `export_results_by_pd` | Export results for the given PD numbers |
 | `cancel_current_batch` | Cancel the currently running batch operation |
+| `rebucket_ratings` | Re-derive HIGH/MEDIUM/LOW ratings from stored criteria counts using current thresholds — no LLM cost |
 
 All destructive or long-running tools require confirmation before executing (see above).
 
