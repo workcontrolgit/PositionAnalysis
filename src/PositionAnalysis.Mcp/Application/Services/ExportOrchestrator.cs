@@ -354,7 +354,7 @@ public class ExportOrchestrator : IExportOrchestrator
             "Is Candidate", "Rating", "AI Score", "Criteria Met Count", "Policy-Determining",
             "Policy-Determining Evidence", "Policy-Making", "Policy-Making Evidence",
             "Policy-Advocating", "Policy-Advocating Evidence", "Confidential",
-            "Confidential Evidence", "Justification Summary", "Eval Date", "Word Form Filename"
+            "Confidential Evidence", "Justification Summary", "Eval Date", "Schedule PC Ind (Human)", "Word Form Filename"
         };
 
         for (var column = 0; column < headers.Length; column++)
@@ -404,7 +404,11 @@ public class ExportOrchestrator : IExportOrchestrator
             worksheet.Cell(row, 22).Value = confidential.Evidence;
             worksheet.Cell(row, 23).Value = result.JustificationSummary;
             worksheet.Cell(row, 24).Value = result.EvaluatedDate;
-            worksheet.Cell(row, 25).Value = wordFileName;
+            worksheet.Cell(row, 25).Value = position?.SchedulePcInd ?? string.Empty;
+            worksheet.Cell(row, 26).Value = wordFileName;
+
+            var wordRelativePath = $"../form-word/{wordFileName}";
+            worksheet.Cell(row, 26).SetHyperlink(new XLHyperlink(wordRelativePath));
 
             worksheet.Cell(row, 12).Style.Fill.BackgroundColor = GetRatingBackgroundColor(result.Rating);
             worksheet.Cell(row, 12).Style.Font.FontColor = GetRatingFontColor(result.Rating);
