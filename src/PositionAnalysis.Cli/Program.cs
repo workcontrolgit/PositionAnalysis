@@ -152,7 +152,10 @@ try
     IChatClient chatClient = BuildChatClient(configuration, provider);
     var modelDisplay = GetModelDisplay(configuration, provider);
 
+    var oracleConnectionName = configuration["SqlclMcp:ConnectionName"];
+
     var session = new AgenticChatSession(chatClient, registry, modelDisplay,
+        oracleConnectionName: oracleConnectionName,
         setSuppressProgress: v => { suppressProgress = v; if (!v) lastPct = -1; });
 
     await session.RunAsync(interactiveCts.Token);
