@@ -210,7 +210,7 @@ public sealed class AgenticChatSession
                        v => $"Show processing status for PD numbers {v}."),
 
             // ── Process ───────────────────────────────────────────────────────────
-            "5" => "Process all pending PDs.",
+            "5" => "Call process_batch_all to process all pending PDs.",
             "6" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
                        v => $"Process batch for series {v}."),
             "7" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
