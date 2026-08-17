@@ -52,7 +52,7 @@ public sealed class McpToolRegistry
             progress: new Progress<ModelContextProtocol.ProgressNotificationValue>(_ => { }),
             cancellationToken: cancellationToken);
 
-        return string.Join("",
+        return string.Join("\n",
             result.Content
                   .OfType<TextContentBlock>()
                   .Select(t => t.Text ?? ""));

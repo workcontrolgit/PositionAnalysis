@@ -12,31 +12,47 @@ namespace PositionAnalysis.Cli;
 /// </summary>
 public sealed class AgenticChatSession
 {
-    private const string SystemPrompt =
-        "You are PositionAnalysis Assistant, helping evaluate federal positions under Schedule " +
-        "Policy/Career authority. You have access to tools for staging, scoring, generating " +
-        "evaluation documents, exporting results, and querying the Oracle database. " +
-        "Call tools when the user requests workflow actions. " +
-        "Cost-gate confirmations are handled automatically by the CLI. " +
-        "NEVER pass confirmed:true yourself — always omit it or set it to false on your first call. " +
-        "The CLI will re-call the tool with confirmed:true after the user approves. " +
-        "When a tool result contains {\"displayed\":true}, the data was already rendered as a table " +
-        "in the terminal. Respond with one brief sentence only — do NOT re-list or summarize the data.";
+    private static readonly string[] OracleConnectionTools =
+        ["sql_run", "run-sql", "schema_information", "annotation_generate"];
 
     private readonly IChatClient _chatClient;
     private readonly McpToolRegistry _registry;
     private readonly string _modelName;
+    private readonly string? _oracleConnectionName;
     private readonly List<ChatMessage> _history;
     private readonly Action<bool>? _setSuppressProgress;
 
     public AgenticChatSession(IChatClient chatClient, McpToolRegistry registry, string modelName,
+        string? oracleConnectionName = null,
         Action<bool>? setSuppressProgress = null)
     {
         _chatClient = chatClient;
         _registry = registry;
         _modelName = modelName;
-        _history = [new ChatMessage(ChatRole.System, SystemPrompt)];
+        _oracleConnectionName = oracleConnectionName;
+        _history = [new ChatMessage(ChatRole.System, BuildSystemPrompt(oracleConnectionName))];
         _setSuppressProgress = setSuppressProgress;
+    }
+
+    private static string BuildSystemPrompt(string? oracleConnectionName)
+    {
+        var base_ =
+            "You are PositionAnalysis Assistant, helping evaluate federal positions under Schedule " +
+            "Policy/Career authority. You have access to tools for staging, scoring, generating " +
+            "evaluation documents, exporting results, and querying the Oracle database. " +
+            "Call tools when the user requests workflow actions. " +
+            "Cost-gate confirmations are handled automatically by the CLI. " +
+            "NEVER pass confirmed:true yourself — always omit it or set it to false on your first call. " +
+            "The CLI will re-call the tool with confirmed:true after the user approves. " +
+            "When a tool result contains {\"displayed\":true}, the data was already rendered as a table " +
+            "in the terminal. Respond with one brief sentence only — do NOT re-list or summarize the data.";
+
+        if (!string.IsNullOrWhiteSpace(oracleConnectionName))
+            base_ += $" When querying Oracle (sql_run, schema_information, connect), always use connection \"{oracleConnectionName}\" — never ask the user which connection to use." +
+                     " The schema_information tool does not work in this environment (annotation metadata unavailable)." +
+                     $" For schema/column questions, use sql_run with: SELECT column_name, data_type, data_length, nullable, data_default FROM user_tab_columns WHERE table_name = UPPER('<table>') ORDER BY column_id";
+
+        return base_;
     }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -287,14 +303,35 @@ public sealed class AgenticChatSession
                 try
                 {
                     var args = new Dictionary<string, object?>(call.Arguments ?? new Dictionary<string, object?>());
+
+                    // Auto-inject the configured Oracle connection name so the LLM never has to guess
+                    if (!string.IsNullOrWhiteSpace(_oracleConnectionName) &&
+                        OracleConnectionTools.Contains(call.Name, StringComparer.OrdinalIgnoreCase) &&
+                        !args.ContainsKey("connection"))
+                        args["connection"] = _oracleConnectionName;
+
                     resultJson = await CallToolWithProgressUiAsync(call.Name, args, cancellationToken);
 
                     // Intercept cost-gate confirmation before the LLM sees it
                     resultJson = await HandleCostGateAsync(call.Name, args, resultJson, cancellationToken);
 
-                    // Render status results as a table; replace JSON so LLM doesn't re-narrate
-                    if (TryRenderStatusTable(call.Name, resultJson))
+                    // Log tool result — warn on errors, debug otherwise
+                    if (resultJson.Contains("\"error\"", StringComparison.OrdinalIgnoreCase) ||
+                        resultJson.StartsWith("Warning:", StringComparison.OrdinalIgnoreCase))
+                        Log.Warning("[Tool:{ToolName}] {Result}", call.Name, resultJson);
+                    else
+                        Log.Debug("[Tool:{ToolName}] Result length: {Len} chars", call.Name, resultJson.Length);
+
+                    // schema_information is broken (annotation permissions); redirect LLM to use sql_run
+                    if (call.Name.Equals("schema_information", StringComparison.OrdinalIgnoreCase) &&
+                        resultJson.Contains("Annotation metadata is not available", StringComparison.OrdinalIgnoreCase))
+                        resultJson = "{\"error\":\"schema_information unavailable\",\"action\":\"Use sql_run with: SELECT column_name, data_type, data_length, nullable, data_default FROM user_tab_columns WHERE table_name = UPPER('<table>') ORDER BY column_id\"}";
+
+                    // Render status/Oracle results as a table; replace JSON so LLM doesn't re-narrate
+                    if (TryRenderStatusTable(call.Name, resultJson) || TryRenderOracleSqlTable(call.Name, resultJson))
                         resultJson = "{\"displayed\":true,\"message\":\"Results shown in table above.\"}";
+                    else if (TryRenderConnectionsList(call.Name, resultJson, out var listedConns))
+                        resultJson = $"{{\"displayed\":true,\"availableConnections\":[{string.Join(",", listedConns.Select(n => $"\"{n}\""))}],\"message\":\"Use one of these exact names when calling connect.\"}}";
                 }
                 catch (Exception ex)
                 {
@@ -663,6 +700,125 @@ public sealed class AgenticChatSession
 
             return false;
         }
+    }
+
+    private static bool TryRenderConnectionsList(string toolName, string resultText, out List<string> connNames)
+    {
+        connNames = [];
+        if (!toolName.Equals("connections_list", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var entries = resultText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var table = new Table().Border(TableBorder.Rounded)
+            .AddColumn("[grey]Name[/]")
+            .AddColumn("[grey]Connect String[/]")
+            .AddColumn("[grey]User[/]");
+
+        foreach (var entry in entries)
+        {
+            var name    = ExtractField(entry, "Name:");
+            var connStr = ExtractField(entry, "Connect String:");
+            var user    = ExtractField(entry, "User:");
+            if (string.IsNullOrEmpty(name)) continue;
+            connNames.Add(name);
+            table.AddRow(Markup.Escape(name), Markup.Escape(connStr), Markup.Escape(user));
+        }
+
+        if (connNames.Count == 0) return false;
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(table);
+        return true;
+
+        static string ExtractField(string text, string label)
+        {
+            var idx = text.IndexOf(label, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return "";
+            var start = idx + label.Length;
+            // Value ends at next known label or end of string
+            var knownLabels = new[] { "Connect String:", "User:", "Password:", "Name:" };
+            var end = text.Length;
+            foreach (var next in knownLabels)
+            {
+                var nextIdx = text.IndexOf(next, start, StringComparison.OrdinalIgnoreCase);
+                if (nextIdx > start && nextIdx < end) end = nextIdx;
+            }
+            return text[start..end].Trim();
+        }
+    }
+
+    private static bool TryRenderOracleSqlTable(string toolName, string resultText)
+    {
+        if (!toolName.Equals("sql_run", StringComparison.OrdinalIgnoreCase) &&
+            !toolName.Equals("run-sql", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // SQLcl MCP returns CSV: first line is quoted headers, subsequent lines are data rows.
+        var lines = resultText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length < 2)
+            return false;
+
+        var headers = ParseCsvLine(lines[0]);
+        if (headers.Count == 0)
+            return false;
+
+        var table = new Table().Border(TableBorder.Rounded);
+        foreach (var h in headers)
+            table.AddColumn($"[grey]{Markup.Escape(h)}[/]");
+
+        var dataRows = 0;
+        foreach (var line in lines.Skip(1))
+        {
+            var cells = ParseCsvLine(line);
+            // Pad or trim to header count
+            while (cells.Count < headers.Count) cells.Add("");
+            table.AddRow(cells.Take(headers.Count)
+                              .Select(c => string.IsNullOrEmpty(c) ? "[grey]—[/]" : Markup.Escape(c))
+                              .ToArray());
+            dataRows++;
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.Write(table);
+        AnsiConsole.MarkupLine($"[grey]{dataRows} row(s)[/]");
+        return true;
+    }
+
+    /// <summary>Parses one CSV line, handling quoted fields that may contain commas.</summary>
+    private static List<string> ParseCsvLine(string line)
+    {
+        var fields = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+            if (c == '"')
+            {
+                if (inQuotes && i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    current.Append('"');
+                    i++; // skip escaped quote
+                }
+                else
+                {
+                    inQuotes = !inQuotes;
+                }
+            }
+            else if (c == ',' && !inQuotes)
+            {
+                fields.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+        fields.Add(current.ToString());
+        return fields;
     }
 
     private static bool IsCancelledResult(string json)
