@@ -319,6 +319,8 @@ public class ExportOrchestrator : IExportOrchestrator
 
                 worksheet.Columns().AdjustToContents();
                 worksheet.SheetView.FreezeRows(1);
+                worksheet.SheetView.FreezeColumns(2);
+                worksheet.RangeUsed()?.SetAutoFilter();
 
                 workbook.SaveAs(outputPath);
             });
@@ -347,14 +349,16 @@ public class ExportOrchestrator : IExportOrchestrator
 
     private static void WriteHeaderRow(IXLWorksheet worksheet)
     {
+        // Most useful columns for spotting review candidates come first: filename right after
+        // PD number so it's clickable without scrolling past the wide evidence columns.
         var headers = new[]
         {
-            "PD Number", "Position Title", "Org Code", "Pay Plan", "Series", "Grade",
-            "Manager Level", "Position Sensitivity", "Public Trust", "Service Category",
-            "Is Candidate", "Rating", "AI Score", "Criteria Met Count", "Policy-Determining",
-            "Policy-Determining Evidence", "Policy-Making", "Policy-Making Evidence",
+            "PD Number", "Word Form Filename", "Position Title", "Rating", "Criteria Met Count",
+            "AI Score", "Is Candidate", "Confirmed Schedule PC", "Series", "Grade", "Org Code",
+            "Pay Plan", "Manager Level", "Position Sensitivity", "Public Trust", "Service Category",
+            "Policy-Determining", "Policy-Determining Evidence", "Policy-Making", "Policy-Making Evidence",
             "Policy-Advocating", "Policy-Advocating Evidence", "Confidential",
-            "Confidential Evidence", "Justification Summary", "Eval Date", "Schedule PC Ind (Human)", "Word Form Filename"
+            "Confidential Evidence", "Justification Summary", "Eval Date"
         };
 
         for (var column = 0; column < headers.Length; column++)
@@ -381,40 +385,40 @@ public class ExportOrchestrator : IExportOrchestrator
             var wordFileName = $"PD-{result.PdNbr}_{ToFileNameSlug(title)}_{payPlan}-{result.Series}-{result.Grade.Value}.docx";
 
             worksheet.Cell(row, 1).Value = result.PdNbr;
-            worksheet.Cell(row, 2).Value = title;
-            worksheet.Cell(row, 3).Value = string.IsNullOrWhiteSpace(position?.OrganizationCode) ? position?.BureauCode ?? string.Empty : position.OrganizationCode;
-            worksheet.Cell(row, 4).Value = payPlan;
-            worksheet.Cell(row, 5).Value = result.Series.ToString();
-            worksheet.Cell(row, 6).Value = result.Grade.ToString();
-            worksheet.Cell(row, 7).Value = GetManagerLevelLabel(position?.ManagerLevel);
-            worksheet.Cell(row, 8).Value = GetSensitivityLabel(position?.PositionSensitivity);
-            worksheet.Cell(row, 9).Value = GetPublicTrustLabel(position?.PublicTrust);
-            worksheet.Cell(row, 10).Value = GetServiceCategoryLabel(position?.ServiceCategory);
-            worksheet.Cell(row, 11).Value = result.IsCandidate ? "YES" : "NO";
-            worksheet.Cell(row, 12).Value = result.Rating;
-            worksheet.Cell(row, 13).Value = result.OverallScore;
-            worksheet.Cell(row, 14).Value = result.CriteriaScores.Count(c => c.Triggered);
-            worksheet.Cell(row, 15).Value = policyDetermining.Triggered.ToString();
-            worksheet.Cell(row, 16).Value = policyDetermining.Evidence;
-            worksheet.Cell(row, 17).Value = policyMaking.Triggered.ToString();
-            worksheet.Cell(row, 18).Value = policyMaking.Evidence;
-            worksheet.Cell(row, 19).Value = policyAdvocating.Triggered.ToString();
-            worksheet.Cell(row, 20).Value = policyAdvocating.Evidence;
-            worksheet.Cell(row, 21).Value = confidential.Triggered.ToString();
-            worksheet.Cell(row, 22).Value = confidential.Evidence;
-            worksheet.Cell(row, 23).Value = result.JustificationSummary;
-            worksheet.Cell(row, 24).Value = result.EvaluatedDate;
-            worksheet.Cell(row, 25).Value = position?.SchedulePcInd ?? string.Empty;
-            worksheet.Cell(row, 26).Value = wordFileName;
+            worksheet.Cell(row, 2).Value = wordFileName;
+            worksheet.Cell(row, 3).Value = title;
+            worksheet.Cell(row, 4).Value = result.Rating;
+            worksheet.Cell(row, 5).Value = result.CriteriaScores.Count(c => c.Triggered);
+            worksheet.Cell(row, 6).Value = result.OverallScore;
+            worksheet.Cell(row, 7).Value = result.IsCandidate ? "YES" : "NO";
+            worksheet.Cell(row, 8).Value = position?.SchedulePcInd ?? string.Empty;
+            worksheet.Cell(row, 9).Value = result.Series.ToString();
+            worksheet.Cell(row, 10).Value = result.Grade.ToString();
+            worksheet.Cell(row, 11).Value = string.IsNullOrWhiteSpace(position?.OrganizationCode) ? position?.BureauCode ?? string.Empty : position.OrganizationCode;
+            worksheet.Cell(row, 12).Value = payPlan;
+            worksheet.Cell(row, 13).Value = GetManagerLevelLabel(position?.ManagerLevel);
+            worksheet.Cell(row, 14).Value = GetSensitivityLabel(position?.PositionSensitivity);
+            worksheet.Cell(row, 15).Value = GetPublicTrustLabel(position?.PublicTrust);
+            worksheet.Cell(row, 16).Value = GetServiceCategoryLabel(position?.ServiceCategory);
+            worksheet.Cell(row, 17).Value = policyDetermining.Triggered.ToString();
+            worksheet.Cell(row, 18).Value = policyDetermining.Evidence;
+            worksheet.Cell(row, 19).Value = policyMaking.Triggered.ToString();
+            worksheet.Cell(row, 20).Value = policyMaking.Evidence;
+            worksheet.Cell(row, 21).Value = policyAdvocating.Triggered.ToString();
+            worksheet.Cell(row, 22).Value = policyAdvocating.Evidence;
+            worksheet.Cell(row, 23).Value = confidential.Triggered.ToString();
+            worksheet.Cell(row, 24).Value = confidential.Evidence;
+            worksheet.Cell(row, 25).Value = result.JustificationSummary;
+            worksheet.Cell(row, 26).Value = result.EvaluatedDate;
 
             var wordRelativePath = $"../form-word/{wordFileName}";
-            worksheet.Cell(row, 26).SetHyperlink(new XLHyperlink(wordRelativePath));
+            worksheet.Cell(row, 2).SetHyperlink(new XLHyperlink(wordRelativePath));
 
-            worksheet.Cell(row, 12).Style.Fill.BackgroundColor = GetRatingBackgroundColor(result.Rating);
-            worksheet.Cell(row, 12).Style.Font.FontColor = GetRatingFontColor(result.Rating);
-            worksheet.Cell(row, 13).Style.Fill.BackgroundColor = XLColor.FromHtml($"#{ScoreGradient.Background(result.OverallScore)}");
-            worksheet.Cell(row, 13).Style.Font.FontColor = XLColor.FromHtml($"#{ScoreGradient.Foreground(result.OverallScore)}");
-            worksheet.Cell(row, 24).Style.DateFormat.Format = "yyyy-mm-dd";
+            worksheet.Cell(row, 4).Style.Fill.BackgroundColor = GetRatingBackgroundColor(result.Rating);
+            worksheet.Cell(row, 4).Style.Font.FontColor = GetRatingFontColor(result.Rating);
+            worksheet.Cell(row, 6).Style.Fill.BackgroundColor = XLColor.FromHtml($"#{ScoreGradient.Background(result.OverallScore)}");
+            worksheet.Cell(row, 6).Style.Font.FontColor = XLColor.FromHtml($"#{ScoreGradient.Foreground(result.OverallScore)}");
+            worksheet.Cell(row, 26).Style.DateFormat.Format = "yyyy-mm-dd";
 
             row++;
         }

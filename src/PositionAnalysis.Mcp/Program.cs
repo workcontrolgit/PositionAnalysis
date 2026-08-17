@@ -147,6 +147,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, ResetFailedToStagedToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreByPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescorePdsBySeriesToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescoreConfirmedSchedulePcToolHandler>();
                 services.AddScoped<IMcpToolHandler, RebucketRatingsToolHandler>();
                 services.AddScoped<IMcpToolHandler, StagePdsClearToolHandler>();
                 services.AddScoped<IMcpToolHandler, RunUnattendedScoringToolHandler>();
@@ -163,6 +164,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsByOrgsToolHandler>();
                 services.AddScoped<IMcpToolHandler, GenerateDocumentsByPdToolHandler>();
+                services.AddScoped<IMcpToolHandler, GenerateDocumentsConfirmedSchedulePcToolHandler>();
                 services.AddScoped<IMcpToolHandler, ExportResultsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ExportResultsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, ExportResultsByOrgsToolHandler>();

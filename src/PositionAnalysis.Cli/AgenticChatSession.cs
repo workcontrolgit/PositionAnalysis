@@ -142,16 +142,20 @@ public sealed class AgenticChatSession
                     "[bold] 5[/] All pending\n" +
                     "[bold] 6[/] By series\n" +
                     "[bold] 7[/] By org code\n" +
-                    "[bold] 8[/] By PD number")
-                .Header("[bold green] Evaluate [/]")
+                    "[bold] 8[/] By PD number\n" +
+                    "[bold] 9[/] Re-score by PD number\n" +
+                    "[bold]10[/] Re-score by series\n" +
+                    "[bold]11[/] Re-score confirmed Schedule P/C")
+                .Header("[bold green] AI Evaluate [/]")
                 .BorderColor(Color.Green)
                 .Padding(1, 0),
 
             new Panel(
-                    "[bold] 9[/] All\n" +
-                    "[bold]10[/] By series\n" +
-                    "[bold]11[/] By org code\n" +
-                    "[bold]12[/] By PD number")
+                    "[bold]12[/] All\n" +
+                    "[bold]13[/] By series\n" +
+                    "[bold]14[/] By org code\n" +
+                    "[bold]15[/] By PD number\n" +
+                    "[bold]16[/] Confirmed Schedule P/C")
                 .Header("[bold cyan] Generate Word [/]")
                 .BorderColor(Color.Cyan1)
                 .Padding(1, 0));
@@ -159,24 +163,22 @@ public sealed class AgenticChatSession
         // Row 2: Export to Excel | Manage | (hint)
         grid.AddRow(
             new Panel(
-                    "[bold]13[/] All\n" +
-                    "[bold]14[/] By series\n" +
-                    "[bold]15[/] By org code\n" +
-                    "[bold]16[/] By PD number")
+                    "[bold]17[/] All\n" +
+                    "[bold]18[/] By series\n" +
+                    "[bold]19[/] By org code\n" +
+                    "[bold]20[/] By PD number")
                 .Header("[bold magenta] Export Excel [/]")
                 .BorderColor(Color.Magenta1)
                 .Padding(1, 0),
 
             new Panel(
-                    "[bold]17[/] Stage PDs\n" +
-                    "[bold]18[/] Clear staged PDs\n" +
-                    "[bold]19[/] Reset failed → staged\n" +
-                    "[bold]20[/] Run unattended scoring\n" +
-                    "[bold]21[/] Unattended queue status\n" +
-                    "[bold]22[/] Re-score by PD number\n" +
-                    "[bold]23[/] Re-score by series\n" +
-                    "[bold]24[/] Rebucket ratings (all)\n" +
-                    "[bold]25[/] Rebucket ratings by series")
+                    "[bold]21[/] Stage PDs\n" +
+                    "[bold]22[/] Clear staged PDs\n" +
+                    "[bold]23[/] Reset failed → staged\n" +
+                    "[bold]24[/] Run unattended scoring\n" +
+                    "[bold]25[/] Unattended queue status\n" +
+                    "[bold]26[/] Rebucket ratings (all)\n" +
+                    "[bold]27[/] Rebucket ratings by series")
                 .Header("[bold blue] Manage [/]")
                 .BorderColor(Color.Blue)
                 .Padding(1, 0),
@@ -209,7 +211,7 @@ public sealed class AgenticChatSession
             "4" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
                        v => $"Show processing status for PD numbers {v}."),
 
-            // ── Process ───────────────────────────────────────────────────────────
+            // ── AI Evaluate ──────────────────────────────────────────────────────
             "5" => "Call process_batch_all to process all pending PDs.",
             "6" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
                        v => $"Process batch for series {v}."),
@@ -217,37 +219,39 @@ public sealed class AgenticChatSession
                        v => $"Process batch for org codes {v}."),
             "8" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
                        v => $"Process batch for PD numbers {v}."),
+            "9" => PromptParam("PD numbers to re-score (comma-separated, e.g. 201921,201881)",
+                       v => $"Re-score PD numbers {v}."),
+            "10" => PromptParam("Series codes to re-score (comma-separated, e.g. 00301,00560)",
+                        v => $"Re-score all PDs in series {v}."),
+            "11" => "Call rescore_confirmed_schedule_pc to re-score the human-confirmed Schedule P/C baseline PDs.",
 
             // ── Generate Word Docs ────────────────────────────────────────────────
-            "9"  => "Generate Word evaluation documents for all evaluated PDs.",
-            "10" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
+            "12" => "Generate Word evaluation documents for all evaluated PDs.",
+            "13" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
                         v => $"Generate Word evaluation documents for series {v}."),
-            "11" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
+            "14" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
                         v => $"Generate Word evaluation documents for org codes {v}."),
-            "12" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
+            "15" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
                         v => $"Generate Word evaluation documents for PD numbers {v}."),
+            "16" => "Call generate_documents_confirmed_schedule_pc to generate Word forms for the human-confirmed Schedule P/C baseline PDs.",
 
             // ── Export to Excel ───────────────────────────────────────────────────
-            "13" => "Export all evaluation results to Excel.",
-            "14" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
+            "17" => "Export all evaluation results to Excel.",
+            "18" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
                         v => $"Export evaluation results to Excel for series {v}."),
-            "15" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
+            "19" => PromptParam("Org/bureau codes (comma-separated, e.g. 1500,1530)",
                         v => $"Export evaluation results to Excel for org codes {v}."),
-            "16" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
+            "20" => PromptParam("PD numbers (comma-separated, e.g. 201921,201881)",
                         v => $"Export evaluation results to Excel for PD numbers {v}."),
 
             // ── Manage ────────────────────────────────────────────────────────────
-            "17" => "Stage PDs for evaluation.",
-            "18" => "Clear all staged PDs.",
-            "19" => "Reset all failed evaluations back to staged for retry.",
-            "20" => "Run unattended scoring for all staged pending PDs.",
-            "21" => "Show unattended queue status.",
-            "22" => PromptParam("PD numbers to re-score (comma-separated, e.g. 201921,201881)",
-                        v => $"Re-score PD numbers {v}."),
-            "23" => PromptParam("Series codes to re-score (comma-separated, e.g. 00301,00560)",
-                        v => $"Re-score all PDs in series {v}."),
-            "24" => "Rebucket ratings for all evaluated PDs using current thresholds.",
-            "25" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
+            "21" => "Stage PDs for evaluation.",
+            "22" => "Clear all staged PDs.",
+            "23" => "Reset all failed evaluations back to staged for retry.",
+            "24" => "Run unattended scoring for all staged pending PDs.",
+            "25" => "Show unattended queue status.",
+            "26" => "Rebucket ratings for all evaluated PDs using current thresholds.",
+            "27" => PromptParam("Series codes (comma-separated, e.g. 00301,00560)",
                         v => $"Rebucket ratings for series {v} using current thresholds."),
 
             // ── Free-text or unknown ──────────────────────────────────────────────
