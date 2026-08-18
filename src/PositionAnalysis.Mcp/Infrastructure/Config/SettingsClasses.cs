@@ -140,6 +140,13 @@ public class OutputSettings
         return Path.Combine(dir, fileName);
     }
 
+    public string GetQaReportOutputPath(string fileName)
+    {
+        var dir = Path.Combine(_reportsBaseDirectory, "qa-reports");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, fileName);
+    }
+
     public string GetLogsDirectory()
     {
         var logsDir = Path.Combine(_reportsBaseDirectory, "..", "logs");

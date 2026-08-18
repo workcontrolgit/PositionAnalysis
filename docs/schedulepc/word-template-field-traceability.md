@@ -6,15 +6,15 @@ source — Oracle backend (`TEMP_PD_SCHED_PC` / `TEMP_PD_SCHED_PC_DUTIES`) or
 LLM-generated output — so testers/QA can cross-reference report values against
 the source system or the model response without reading code.
 
-**Code entry point:** [`OpenXmlDocumentStrategy.FillDocument`](../../src/SchedulePCMcp/Infrastructure/DocumentGeneration/OpenXmlDocumentStrategy.cs)
+**Code entry point:** [`OpenXmlDocumentStrategy.FillDocument`](../../src/PositionAnalysis.Mcp/Infrastructure/DocumentGeneration/OpenXmlDocumentStrategy.cs)
 fills the template's SDT (content control) fields by ordinal position, in document order.
 
 ## Legend
 
 | Source | Meaning |
 |---|---|
-| **Backend** | Read directly from Oracle `TEMP_PD_SCHED_PC` (or `_DUTIES`) via [`OraclePositionDescriptionRepository`](../../src/SchedulePCMcp/Infrastructure/Repositories/OraclePositionDescriptionRepository.cs) — not evaluative, not touched by the LLM. |
-| **LLM** | Produced by the scoring model from the prompt in [`ScoringOrchestrator.GenerateEvaluationPrompt`](../../src/SchedulePCMcp/Application/Services/ScoringOrchestrator.cs) and parsed by `ParseLlmResponse`. |
+| **Backend** | Read directly from Oracle `TEMP_PD_SCHED_PC` (or `_DUTIES`) via [`OraclePositionDescriptionRepository`](../../src/PositionAnalysis.Mcp/Infrastructure/Repositories/OraclePositionDescriptionRepository.cs) — not evaluative, not touched by the LLM. |
+| **LLM** | Produced by the scoring model from the prompt in [`ScoringOrchestrator.GenerateEvaluationPrompt`](../../src/PositionAnalysis.Mcp/Application/Services/ScoringOrchestrator.cs) and parsed by `ParseLlmResponse`. |
 | **Derived** | Computed in code from Backend and/or LLM values (formatting, lookups) — no independent source of its own. |
 | **Static** | Hard-coded literal in `OpenXmlDocumentStrategy` (not sourced from data). |
 
@@ -24,7 +24,7 @@ fills the template's SDT (content control) fields by ordinal position, in docume
 |---|---|---|---|
 | 0 | PD Number | Backend | `EvaluationResult.PdNbr` ← `TEMP_PD_SCHED_PC.PD_NBR` |
 | 1 | Evaluation Date | Backend | `EvaluationResult.EvaluatedDate` (evaluation run date, **not** the PD's effective date — see Appendix A #35 for `PD_EFFECTIVE_DATE`) |
-| 2 | Position Title | Backend | `TEMP_PD_SCHED_PC.PD_POSITION_TITLE_TEXT` |
+| 2 | Position Title | Derived | `TEMP_PD_SCHED_PC.PD_POSITION_TITLE_TEXT`, with a leading numeric prefix (e.g. `"040 - "`) stripped by `StripTitlePrefix` |
 | 3 | Schedule PC Rating | LLM | `EvaluationResult.Rating` + `CriteriaScores` triggered count (`"{Rating} -- {N} of 4 criteria met"`) |
 | 4 | Bureau/Org Code | Derived | `(BUREAU_CODE) BUREAU_DESC / (PD_ORIGIN_ORG_CODE) ORG_DESC`, from `TEMP_PD_SCHED_PC.BUREAU_CODE`/`BUREAU_DESC` and `PD_ORIGIN_ORG_CODE`/`ORG_DESC` |
 | 5 | Pay Plan / Series / Grade | Backend | `GVT_PAY_PLAN`-`GVT_OCC_SERIES`-`GRD_CODE` |
@@ -59,7 +59,7 @@ SDTs 20–21 are reserved/unused spacer controls.
 | SDT # | Field | Source | Origin |
 |---|---|---|---|
 | 28 | PD Number | Backend | Same as SDT #0 |
-| 29 | Position Title | Backend | Same as SDT #2 |
+| 29 | Position Title | Derived | Same as SDT #2 |
 | 30 | Bureau | Derived | `(BUREAU_CODE) BUREAU_DESC` |
 | 31 | Org Code | Derived | `(PD_ORIGIN_ORG_CODE) ORG_DESC` |
 | 32 | Pay Plan | Backend | `GVT_PAY_PLAN` |
@@ -82,9 +82,9 @@ One row per duty, cloned from the template row at SDT #40/#41.
 
 ## LLM Configuration
 
-Settings live in [`appsettings.json`](../../src/SchedulePCMcp/appsettings.json) under `AiProvider`, bound to
-[`AzureOpenAiSettings`/`OllamaSettings`](../../src/SchedulePCMcp/Infrastructure/Config/SettingsClasses.cs)
-and consumed by [`AiClients.cs`](../../src/SchedulePCMcp/Infrastructure/AiClients/AiClients.cs).
+Settings live in [`appsettings.json`](../../src/PositionAnalysis.Mcp/appsettings.json) under `AiProvider`, bound to
+[`AzureOpenAiSettings`/`OllamaSettings`](../../src/PositionAnalysis.Mcp/Infrastructure/Config/SettingsClasses.cs)
+and consumed by [`AiClients.cs`](../../src/PositionAnalysis.Mcp/Infrastructure/AiClients/AiClients.cs).
 
 | Setting | Purpose |
 |---|---|

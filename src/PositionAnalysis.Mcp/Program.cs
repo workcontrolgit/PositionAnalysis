@@ -129,6 +129,7 @@ public class Program
                 services.AddScoped<IProcessingStatusService, ProcessingStatusService>();
                 services.AddScoped<IDocumentGenerationOrchestrator, DocumentGenerationOrchestrator>();
                 services.AddScoped<IExportOrchestrator, ExportOrchestrator>();
+                services.AddScoped<IQaGroundingReportOrchestrator, QaGroundingReportOrchestrator>();
                 services.AddSingleton<ProcessAllRunStatusService>();
                 services.AddSingleton<ICostGateService, CostGateService>();
                 services.AddSingleton<BatchCancellationService>();
@@ -169,6 +170,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, ExportResultsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, ExportResultsByOrgsToolHandler>();
                 services.AddScoped<IMcpToolHandler, ExportResultsByPdToolHandler>();
+                services.AddScoped<IMcpToolHandler, RunQaTier1GroundingCheckToolHandler>();
                 services.AddSingleton<McpToolsProvider>();
 
                 // MCP Stdio Host

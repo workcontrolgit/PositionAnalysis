@@ -382,7 +382,7 @@ public class ExportOrchestrator : IExportOrchestrator
             var confidential = GetCriterion(result, "Confidential");
             var title = StripTitlePrefix(position?.Title ?? string.Empty);
             var payPlan = position?.PayPlan ?? string.Empty;
-            var wordFileName = $"PD-{result.PdNbr}_{ToFileNameSlug(title)}_{payPlan}-{result.Series}-{result.Grade.Value}.docx";
+            var wordFileName = $"PD-{result.PdNbr}_{ToFileNameSlug(title)}_{payPlan}-{result.Series}-{result.Grade.Value:D2}.docx";
 
             worksheet.Cell(row, 1).Value = result.PdNbr;
             worksheet.Cell(row, 2).Value = wordFileName;

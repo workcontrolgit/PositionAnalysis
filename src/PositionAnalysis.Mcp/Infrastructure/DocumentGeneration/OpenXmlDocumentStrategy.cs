@@ -4,6 +4,7 @@ using System.Xml;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PositionAnalysis.Mcp.Domain.Entities;
+using PositionAnalysis.Mcp.Domain.Services;
 using PositionAnalysis.Mcp.Infrastructure.Config;
 
 namespace PositionAnalysis.Mcp.Infrastructure.DocumentGeneration;
@@ -352,7 +353,7 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
             var supportingCriteria = result.CriteriaScores
                 .Where(c => c.Triggered && (c.SupportingDutyNumbers.Count > 0
                     ? c.SupportingDutyNumbers.Contains(duty.SequenceNumber)
-                    : DutySupportsCriterion(dutyText, c.Evidence)))
+                    : EvidenceGroundingChecker.IsSupported(dutyText, c.Evidence)))
                 .Select(c => c.CriterionName)
                 .ToList();
             var metaText  = supportingCriteria.Count > 0
@@ -371,28 +372,6 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         }
 
         templateRow.ParentNode!.RemoveChild(templateRow);
-    }
-
-    private static bool DutySupportsCriterion(string dutyText, string evidence)
-    {
-        if (string.IsNullOrWhiteSpace(dutyText) || string.IsNullOrWhiteSpace(evidence)) return false;
-
-        var normalizedDuty     = NormalizeForMatch(dutyText);
-        var normalizedEvidence = NormalizeForMatch(evidence);
-        if (normalizedEvidence.Length == 0) return false;
-
-        if (normalizedDuty.Contains(normalizedEvidence, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Evidence quotes may be lightly paraphrased; require most significant words to appear in the duty text.
-        var evidenceWords = normalizedEvidence.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(w => w.Length >= 5)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (evidenceWords.Length == 0) return false;
-
-        var matchCount = evidenceWords.Count(w => normalizedDuty.Contains(w, StringComparison.OrdinalIgnoreCase));
-        return matchCount / (double)evidenceWords.Length >= 0.6;
     }
 
     private static string NormalizeForMatch(string text) => Regex.Replace(text, @"[^\w\s]", "").Trim();
