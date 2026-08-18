@@ -141,6 +141,15 @@ Before evaluating criteria, write 1-2 objective sentences describing the overarc
 
 ---
 
+### Evidence Requirement (mandatory for all four criteria)
+
+`Evidence` must NEVER be an empty string, for either a triggered or an untriggered criterion. This is validated after scoring, and PDs with a blank `Evidence` field are flagged as QA defects.
+
+- If `Triggered: true` → `Evidence` is a verbatim quote (or quotes) from the duty text that supports the trigger.
+- If `Triggered: false` → `Evidence` is a 1-2 sentence explicit negative finding: name the closest relevant duty language considered and state why it falls short of the criterion (e.g., "Duty 1 states the incumbent 'develops and recommends policy options,' but recommendations are routed through senior officials for approval, so the incumbent lacks independent policy-determining authority.").
+
+---
+
 ### Output Schema
 
 Return ONLY a single valid JSON object. No explanation, no markdown fences, no surrounding text.
@@ -163,10 +172,10 @@ Return ONLY a single valid JSON object. No explanation, no markdown fences, no s
   "PositionPurpose":     "1-2 sentence objective summary",
   "JustificationSummary": "3+ sentences citing EO and specific duty language",
   "Criteria": [
-    { "Name": "Policy-Determining", "Triggered": true or false, "Evidence": "verbatim quote or explicit negative finding" },
-    { "Name": "Policy-Making",      "Triggered": true or false, "Evidence": "verbatim quote or explicit negative finding" },
-    { "Name": "Policy-Advocating",  "Triggered": true or false, "Evidence": "verbatim quote or explicit negative finding" },
-    { "Name": "Confidential",       "Triggered": true or false, "Evidence": "verbatim quote or explicit negative finding" }
+    { "Name": "Policy-Determining", "Triggered": true or false, "Evidence": "REQUIRED, never empty: verbatim quote if triggered, else a 1-2 sentence negative finding" },
+    { "Name": "Policy-Making",      "Triggered": true or false, "Evidence": "REQUIRED, never empty: verbatim quote if triggered, else a 1-2 sentence negative finding" },
+    { "Name": "Policy-Advocating",  "Triggered": true or false, "Evidence": "REQUIRED, never empty: verbatim quote if triggered, else a 1-2 sentence negative finding" },
+    { "Name": "Confidential",       "Triggered": true or false, "Evidence": "REQUIRED, never empty: verbatim quote if triggered, else a 1-2 sentence negative finding" }
   ],
   "Duties": [
     { "SeqNum": "seq_num", "DutyText": "duty text", "MatchedCriteria": ["Policy-Making"] },
