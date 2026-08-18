@@ -103,11 +103,12 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
         var evalDate       = result.EvaluatedDate.ToString("yyyy-MM-dd");
 
         var bureauOrgDisplay = FormatBureauOrgDisplay(pd);
+        var title = StripTitlePrefix(pd.Title);
 
         // Section 1
         SetSdtText(allSdts, nsm, 0, result.PdNbr);
         SetSdtText(allSdts, nsm, 1, evalDate);
-        SetSdtText(allSdts, nsm, 2, pd.Title);
+        SetSdtText(allSdts, nsm, 2, title);
         SetRatingCell(doc, nsm, allSdts, 3, ratingLabel, ratingBg, ratingFg);
         SetSdtText(allSdts, nsm, 4, bureauOrgDisplay);
         SetSdtText(allSdts, nsm, 5, $"{pd.PayPlan}-{pd.Series}-{pd.Grade}");
@@ -146,7 +147,7 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
 
         // Appendix A
         SetSdtText(allSdts, nsm, 28, result.PdNbr);
-        SetSdtText(allSdts, nsm, 29, pd.Title);
+        SetSdtText(allSdts, nsm, 29, title);
         SetSdtText(allSdts, nsm, 30, FormatCodeParenDescription(pd.BureauCode, pd.BureauName));
         SetSdtText(allSdts, nsm, 31, FormatCodeParenDescription(pd.OrganizationCode, pd.OrganizationName));
         SetSdtText(allSdts, nsm, 32, pd.PayPlan);
@@ -395,6 +396,9 @@ public class OpenXmlDocumentStrategy : IDocumentGenerationStrategy
     }
 
     private static string NormalizeForMatch(string text) => Regex.Replace(text, @"[^\w\s]", "").Trim();
+
+    // Source titles sometimes carry a leading numeric code, e.g. "015 - FOREIGN AFFAIRS OFFICER"; drop it.
+    private static string StripTitlePrefix(string text) => Regex.Replace(text, @"^\d+\s*-\s*", "");
 
     private static void SetSdtNodeText(XmlNamespaceManager nsm, XmlNode sdt, string value)
     {

@@ -353,8 +353,8 @@ public class ExportOrchestrator : IExportOrchestrator
         // PD number so it's clickable without scrolling past the wide evidence columns.
         var headers = new[]
         {
-            "PD Number", "Word Form Filename", "Position Title", "Rating", "Criteria Met Count",
-            "AI Score", "Is Candidate", "Confirmed Schedule PC", "Series", "Grade", "Org Code",
+            "PD Number", "Word Form Filename", "Rating", "Criteria Met Count",
+            "AI Score", "Is Candidate", "Confirmed Schedule PC", "Position Title", "Series", "Grade", "Org Code",
             "Pay Plan", "Manager Level", "Position Sensitivity", "Public Trust", "Service Category",
             "Policy-Determining", "Policy-Determining Evidence", "Policy-Making", "Policy-Making Evidence",
             "Policy-Advocating", "Policy-Advocating Evidence", "Confidential",
@@ -380,18 +380,18 @@ public class ExportOrchestrator : IExportOrchestrator
             var policyMaking = GetCriterion(result, "Policy-Making");
             var policyAdvocating = GetCriterion(result, "Policy-Advocating");
             var confidential = GetCriterion(result, "Confidential");
-            var title = position?.Title ?? string.Empty;
+            var title = StripTitlePrefix(position?.Title ?? string.Empty);
             var payPlan = position?.PayPlan ?? string.Empty;
             var wordFileName = $"PD-{result.PdNbr}_{ToFileNameSlug(title)}_{payPlan}-{result.Series}-{result.Grade.Value}.docx";
 
             worksheet.Cell(row, 1).Value = result.PdNbr;
             worksheet.Cell(row, 2).Value = wordFileName;
-            worksheet.Cell(row, 3).Value = title;
-            worksheet.Cell(row, 4).Value = result.Rating;
-            worksheet.Cell(row, 5).Value = result.CriteriaScores.Count(c => c.Triggered);
-            worksheet.Cell(row, 6).Value = result.OverallScore;
-            worksheet.Cell(row, 7).Value = result.IsCandidate ? "YES" : "NO";
-            worksheet.Cell(row, 8).Value = position?.SchedulePcInd ?? string.Empty;
+            worksheet.Cell(row, 3).Value = result.Rating;
+            worksheet.Cell(row, 4).Value = result.CriteriaScores.Count(c => c.Triggered);
+            worksheet.Cell(row, 5).Value = result.OverallScore;
+            worksheet.Cell(row, 6).Value = result.IsCandidate ? "YES" : "NO";
+            worksheet.Cell(row, 7).Value = position?.SchedulePcInd ?? string.Empty;
+            worksheet.Cell(row, 8).Value = title;
             worksheet.Cell(row, 9).Value = result.Series.ToString();
             worksheet.Cell(row, 10).Value = result.Grade.ToString();
             worksheet.Cell(row, 11).Value = string.IsNullOrWhiteSpace(position?.OrganizationCode) ? position?.BureauCode ?? string.Empty : position.OrganizationCode;
@@ -414,10 +414,10 @@ public class ExportOrchestrator : IExportOrchestrator
             var wordRelativePath = $"../form-word/{wordFileName}";
             worksheet.Cell(row, 2).SetHyperlink(new XLHyperlink(wordRelativePath));
 
-            worksheet.Cell(row, 4).Style.Fill.BackgroundColor = GetRatingBackgroundColor(result.Rating);
-            worksheet.Cell(row, 4).Style.Font.FontColor = GetRatingFontColor(result.Rating);
-            worksheet.Cell(row, 6).Style.Fill.BackgroundColor = XLColor.FromHtml($"#{ScoreGradient.Background(result.OverallScore)}");
-            worksheet.Cell(row, 6).Style.Font.FontColor = XLColor.FromHtml($"#{ScoreGradient.Foreground(result.OverallScore)}");
+            worksheet.Cell(row, 3).Style.Fill.BackgroundColor = GetRatingBackgroundColor(result.Rating);
+            worksheet.Cell(row, 3).Style.Font.FontColor = GetRatingFontColor(result.Rating);
+            worksheet.Cell(row, 5).Style.Fill.BackgroundColor = XLColor.FromHtml($"#{ScoreGradient.Background(result.OverallScore)}");
+            worksheet.Cell(row, 5).Style.Font.FontColor = XLColor.FromHtml($"#{ScoreGradient.Foreground(result.OverallScore)}");
             worksheet.Cell(row, 26).Style.DateFormat.Format = "yyyy-mm-dd";
 
             row++;
@@ -435,12 +435,17 @@ public class ExportOrchestrator : IExportOrchestrator
 
     private static string ToFileNameSlug(string value)
     {
-        // Source titles sometimes carry a leading numeric code, e.g. "015 - FOREIGN AFFAIRS OFFICER"; drop it for the filename.
-        var withoutPrefix = Regex.Replace(value, @"^\d+\s*-\s*", "");
+        var withoutPrefix = StripTitlePrefix(value);
         var sanitizedValue = new string(withoutPrefix
             .Where(character => char.IsLetterOrDigit(character) || character == ' ' || character == '-')
             .ToArray());
         return string.Join("-", sanitizedValue.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static string StripTitlePrefix(string value)
+    {
+        // Source titles sometimes carry a leading numeric code, e.g. "015 - FOREIGN AFFAIRS OFFICER"; drop it.
+        return Regex.Replace(value, @"^\d+\s*-\s*", "");
     }
 
     private static XLColor GetRatingBackgroundColor(string rating) => rating switch
