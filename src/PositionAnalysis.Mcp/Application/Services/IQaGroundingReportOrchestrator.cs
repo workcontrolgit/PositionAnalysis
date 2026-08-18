@@ -17,4 +17,5 @@ public sealed record QaGroundingReportSummary(
     int TotalPds,
     int TotalCriteriaChecked,
     int UngroundedCount,
-    int MissingNegativeFindingCount);
+    int MissingNegativeFindingCount,
+    int AllFourCriteriaMissingCount);

@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using Microsoft.Extensions.Logging;
 using PositionAnalysis.Mcp.Application.Interfaces;
+using PositionAnalysis.Mcp.Domain.Entities;
 using PositionAnalysis.Mcp.Domain.Enums;
 using PositionAnalysis.Mcp.Domain.Services;
 using PositionAnalysis.Mcp.Infrastructure.Config;
@@ -47,6 +48,7 @@ public class QaGroundingReportOrchestrator : IQaGroundingReportOrchestrator
         var totalCriteriaChecked = 0;
         var ungroundedCount = 0;
         var missingNegativeFindingCount = 0;
+        var allFourMissingPds = new List<EvaluationResult>();
 
         foreach (var result in results.OrderBy(r => r.PdNbr, StringComparer.Ordinal))
         {
@@ -54,6 +56,8 @@ public class QaGroundingReportOrchestrator : IQaGroundingReportOrchestrator
             var fullDutyText = position == null
                 ? string.Empty
                 : string.Join(" ", position.Duties.Select(d => d.Text));
+
+            var missingForThisPd = 0;
 
             foreach (var criterion in result.CriteriaScores)
             {
@@ -71,6 +75,7 @@ public class QaGroundingReportOrchestrator : IQaGroundingReportOrchestrator
                     // Prompt requires a verbatim quote or an explicit negative finding for every
                     // criterion; a blank evidence field means the model skipped that instruction.
                     missingNegativeFindingCount++;
+                    missingForThisPd++;
                     worksheet.Cell(row, 9).Value = "MISSING";
                     worksheet.Cell(row, 9).Style.Fill.BackgroundColor = XLColor.FromHtml("#FFF2CC");
                     worksheet.Cell(row, 9).Style.Font.FontColor = XLColor.FromHtml("#7F6000");
@@ -93,6 +98,9 @@ public class QaGroundingReportOrchestrator : IQaGroundingReportOrchestrator
 
                 row++;
             }
+
+            if (result.CriteriaScores.Count > 0 && missingForThisPd == result.CriteriaScores.Count)
+                allFourMissingPds.Add(result);
         }
 
         worksheet.Row(1).Style.Font.Bold = true;
@@ -100,15 +108,17 @@ public class QaGroundingReportOrchestrator : IQaGroundingReportOrchestrator
         worksheet.RangeUsed()?.SetAutoFilter();
         worksheet.Columns().AdjustToContents();
 
+        WriteAllCriteriaMissingSheet(workbook, allFourMissingPds);
+
         var fileName = $"Tier1-Grounding-Check-{DateTime.Now:yyyy-MM-dd}.xlsx";
         var outputPath = _outputSettings.GetQaReportOutputPath(fileName);
         workbook.SaveAs(outputPath);
 
         _logger.LogInformation(
-            "Tier 1 QA grounding check complete: {TotalPds} PDs, {TotalChecked} criteria checked, {Ungrounded} flagged ungrounded, {MissingNegativeFinding} missing negative findings. Report: {OutputPath}",
-            results.Count, totalCriteriaChecked, ungroundedCount, missingNegativeFindingCount, outputPath);
+            "Tier 1 QA grounding check complete: {TotalPds} PDs, {TotalChecked} criteria checked, {Ungrounded} flagged ungrounded, {MissingNegativeFinding} missing negative findings, {AllFourMissing} PDs with all criteria missing evidence. Report: {OutputPath}",
+            results.Count, totalCriteriaChecked, ungroundedCount, missingNegativeFindingCount, allFourMissingPds.Count, outputPath);
 
-        return new QaGroundingReportSummary(outputPath, results.Count, totalCriteriaChecked, ungroundedCount, missingNegativeFindingCount);
+        return new QaGroundingReportSummary(outputPath, results.Count, totalCriteriaChecked, ungroundedCount, missingNegativeFindingCount, allFourMissingPds.Count);
     }
 
     private static void WriteHeaderRow(IXLWorksheet worksheet)
@@ -121,5 +131,29 @@ public class QaGroundingReportOrchestrator : IQaGroundingReportOrchestrator
 
         for (var column = 0; column < headers.Length; column++)
             worksheet.Cell(1, column + 1).Value = headers[column];
+    }
+
+    private static void WriteAllCriteriaMissingSheet(XLWorkbook workbook, List<EvaluationResult> allFourMissingPds)
+    {
+        var sheet = workbook.Worksheets.Add("All 4 Criteria Missing");
+        var headers = new[] { "PD Number", "Series", "Grade", "Rating", "Is Candidate" };
+        for (var column = 0; column < headers.Length; column++)
+            sheet.Cell(1, column + 1).Value = headers[column];
+
+        var row = 2;
+        foreach (var result in allFourMissingPds)
+        {
+            sheet.Cell(row, 1).Value = result.PdNbr;
+            sheet.Cell(row, 2).Value = result.Series.ToString();
+            sheet.Cell(row, 3).Value = result.Grade.ToString();
+            sheet.Cell(row, 4).Value = result.Rating;
+            sheet.Cell(row, 5).Value = result.IsCandidate ? "YES" : "NO";
+            row++;
+        }
+
+        sheet.Row(1).Style.Font.Bold = true;
+        sheet.SheetView.FreezeRows(1);
+        sheet.RangeUsed()?.SetAutoFilter();
+        sheet.Columns().AdjustToContents();
     }
 }
