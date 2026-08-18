@@ -41,6 +41,7 @@ public interface IPositionAnalysisEvalRepository
     Task<EvaluationResult?> ClaimNextPendingAsync(string workerId, TimeSpan leaseDuration) => throw new NotSupportedException();
     Task<bool> CompleteClaimAsync(EvaluationResult result, string workerId) => throw new NotSupportedException();
     Task<QueueStatus> GetQueueStatusAsync() => throw new NotSupportedException();
+    Task<List<string>> GetNeedsRescorePdNumbersAsync() => throw new NotSupportedException();
 }
 
 public sealed record SeriesCounts(string Series, int Staged, int InProgress, int Complete, int Failed);

@@ -526,6 +526,27 @@ public class OraclePositionAnalysisEvalRepository : IPositionAnalysisEvalReposit
         return count;
     }
 
+    public async Task<List<string>> GetNeedsRescorePdNumbersAsync()
+    {
+        using var connection = new OracleConnection(_settings.ConnectionString);
+        await connection.OpenAsync();
+
+        const string sql = @"
+            SELECT pd_nbr
+            FROM schedule_pc_eval
+            WHERE needs_rescore = 'Y'
+            ORDER BY pd_nbr";
+
+        using var cmd = new OracleCommand(sql, connection) { CommandTimeout = _settings.CommandTimeout };
+
+        var pdNumbers = new List<string>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            pdNumbers.Add(reader.GetString(0));
+
+        return pdNumbers;
+    }
+
     public async Task<int> ResetFailedAsync()
     {
         _logger.LogInformation("Resetting failed evaluation rows back to PENDING for retry");

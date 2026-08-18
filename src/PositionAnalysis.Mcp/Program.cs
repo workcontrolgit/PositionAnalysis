@@ -149,6 +149,7 @@ public class Program
                 services.AddScoped<IMcpToolHandler, RescoreByPdsToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescorePdsBySeriesToolHandler>();
                 services.AddScoped<IMcpToolHandler, RescoreConfirmedSchedulePcToolHandler>();
+                services.AddScoped<IMcpToolHandler, RescoreNeedsRescoreToolHandler>();
                 services.AddScoped<IMcpToolHandler, RebucketRatingsToolHandler>();
                 services.AddScoped<IMcpToolHandler, StagePdsClearToolHandler>();
                 services.AddScoped<IMcpToolHandler, RunUnattendedScoringToolHandler>();
